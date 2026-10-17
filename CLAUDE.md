@@ -38,7 +38,7 @@ Prioridade: cabo antes do dongle (igual ao oficial). Regra em `ChannelClassifier
 ## Protocolo
 
 **Bloco de iluminação (16 bytes, igual nos dois canais):**
-`[0]` modo, `[1..3]` R G B (ordem COLORREF, confirmada em hardware), `[8]` arco-íris,
+`[0]` modo, `[1..3]` R G B (ordem COLORREF; nenhuma inversão relatada em hardware), `[8]` arco-íris,
 `[9]` brilho 0..5, `[10]` velocidade 0..5, `[11]` direção, `[14..15]` `AA 55`.
 Modo 0 = desligado (envia só o byte 0). Modo `0x80` = personalizado por LED (byte 9 = brilho).
 Tabela dos 20 efeitos em `EffectCatalog` (extraída de `fcn.0042b280`).
