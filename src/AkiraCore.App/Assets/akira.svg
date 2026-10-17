@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Ícone do AkiraCore: uma tecla branca com o brilho do LED vazando por baixo.
+       Fonte do akira.ico; regerar com build/icon/build-icon.cjs -->
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c2c2e"/>
+      <stop offset="1" stop-color="#151517"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#dcdce1"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="46"/>
+    </filter>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="212" fill="url(#ground)"/>
+  <rect x="250" y="300" width="524" height="452" rx="120" fill="#0a84ff" filter="url(#glow)"/>
+  <rect x="262" y="250" width="500" height="460" rx="104" fill="url(#cap)"/>
+  <rect x="318" y="282" width="388" height="318" rx="72" fill="#ffffff"/>
+</svg>

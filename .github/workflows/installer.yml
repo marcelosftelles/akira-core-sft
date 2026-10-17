@@ -1,0 +1,40 @@
+# Gera o instalador do Windows. Em tag v* (ex.: v1.0.0, igual ao <Version> do .csproj)
+# publica um Release com o Setup.exe; em execução manual, deixa o Setup.exe como artefato.
+name: Instalador
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Instalar o NSIS
+        run: sudo apt-get update && sudo apt-get install -y nsis
+
+      - name: Testar, publicar e montar o instalador
+        run: bash build/build-installer.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AkiraCore-Setup
+          path: dist/*.exe
+          if-no-files-found: error
+
+      - name: Publicar o Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true

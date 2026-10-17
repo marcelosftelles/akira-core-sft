@@ -89,10 +89,43 @@ dotnet run --project src/AkiraCore.App
 
 Feche o app oficial pela bandeja antes de usar. Em Ajustes, "Simular envio" mostra os bytes sem enviar.
 
-## Gerar o executável
+## Instalar
+
+Baixe `AkiraCore-Setup-<versão>.exe` em Releases (ou gere com o script abaixo) e execute.
+
+- Instala só para o seu usuário, em `%LocalAppData%\Programs\AkiraCore`, sem pedir administrador.
+- Opções: atalho na área de trabalho e "Iniciar com o Windows, escondido na bandeja" (dá para
+  mudar depois em Ajustes › Iniciar com o Windows).
+- Se o Microsoft Edge WebView2 Runtime faltar, o instalador instala (quando o pacote traz o
+  bootstrapper) ou abre a página de download.
+- Desinstalar: Configurações do Windows › Apps › AkiraCore. As configurações salvas só são
+  apagadas se você confirmar.
+
+O instalador não é assinado digitalmente, então o Windows SmartScreen pode avisar
+"O Windows protegeu o computador". Clique em **Mais informações › Executar assim mesmo**.
+
+## Gerar o instalador
+
+Precisa do .NET 8 SDK e do NSIS 3.
 
 ```
-dotnet publish src/AkiraCore.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+bash build/build-installer.sh                                       # Linux, macOS, WSL, Git Bash
+powershell -ExecutionPolicy Bypass -File build\build-installer.ps1   # Windows (winget install NSIS.NSIS)
+```
+
+O script roda os testes, publica o app para win-x64 como arquivo único autossuficiente (não
+precisa de .NET instalado no PC), baixa o bootstrapper do WebView2 e gera
+`dist/AkiraCore-Setup-<versão>.exe`. A versão vem do `<Version>` do
+`src/AkiraCore.App/AkiraCore.App.csproj`.
+
+Para publicar uma versão: suba o `<Version>`, faça commit e crie a tag igual (`git tag v1.0.1`,
+`git push origin v1.0.1`). O workflow `.github/workflows/installer.yml` gera o instalador e cria
+o Release.
+
+Versão portátil, sem instalador (um único .exe para rodar de qualquer pasta):
+
+```
+dotnet publish src/AkiraCore.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
 ```
 
 Para iniciar escondido na bandeja: `AkiraCore.exe --hidden`.

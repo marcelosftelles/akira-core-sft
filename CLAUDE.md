@@ -32,7 +32,16 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
 ```
 dotnet test                                  # roda em qualquer SO
 dotnet run --project src/AkiraCore.App       # só executa no Windows
+bash build/build-installer.sh                # gera dist/AkiraCore-Setup-<versão>.exe (precisa do NSIS)
 ```
+
+Instalador: `installer/AkiraCore.nsi` (NSIS 3, por usuário em `%LocalAppData%\Programs\AkiraCore`,
+sem admin, pt-BR). Publicação win-x64 autossuficiente em arquivo único; o NSIS comprime (LZMA).
+Versão única no `<Version>` do `AkiraCore.App.csproj`; tag `vX.Y.Z` igual dispara
+`.github/workflows/installer.yml`, que cria o Release. Nomes compartilhados entre app e instalador
+(não mudar só de um lado): mutex `AkiraCore.SingleInstance`, evento `AkiraCore.Exit` (o instalador
+pede para o app sair antes de trocar o .exe), valor `AkiraCore` em `HKCU\...\Run` com `--hidden`
+(`StartupCommand`). Ícone: `src/AkiraCore.App/Assets/akira.svg` → `node build/icon/build-icon.cjs`.
 
 O teste em hardware é feito pelo usuário no Windows; o ambiente de nuvem só compila e roda testes.
 Para revisar a interface aqui: `python3 -m http.server` dentro de `src/AkiraCore.App/Ui` e

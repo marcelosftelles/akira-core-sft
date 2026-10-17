@@ -28,7 +28,7 @@ public sealed class MainForm : Form
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly bool _startHidden;
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
-    private readonly NotifyIcon _trayIcon = new() { Text = "AKIRA CORE", Icon = SystemIcons.Application };
+    private readonly NotifyIcon _trayIcon = new() { Text = "AKIRA CORE", Icon = AppIcon.Load(SystemInformation.SmallIconSize) };
     // WM_DEVICECHANGE chega em rajadas: espera assentar antes de procurar o teclado
     private readonly System.Windows.Forms.Timer _deviceTimer = new() { Interval = 700 };
     // Um envio por vez: duas transações abertas juntas se misturariam no teclado
@@ -49,6 +49,7 @@ public sealed class MainForm : Form
 
         var dark = WindowChrome.IsDarkTheme();
         Text = "AKIRA CORE";
+        Icon = AppIcon.Load(SystemInformation.IconSize);
         Font = new Font("Segoe UI", 9f);
         StartPosition = FormStartPosition.CenterScreen;
         var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 800);
@@ -297,7 +298,12 @@ public sealed class MainForm : Form
         effects = EffectView.Catalog,
         lighting = _lighting,
         lightOn = _settings.LightOn,
-        options = new { swapRedBlue = _settings.SwapRedBlue, simulate = _simulate },
+        options = new
+        {
+            swapRedBlue = _settings.SwapRedBlue,
+            simulate = _simulate,
+            startWithWindows = StartupRegistration.IsEnabled(),
+        },
         device = DeviceInfo(),
     });
 
@@ -435,6 +441,19 @@ public sealed class MainForm : Form
                 _simulate = value;
                 PostDevice();
                 break;
+            case "startWithWindows":
+                try
+                {
+                    StartupRegistration.SetEnabled(value);
+                    PostStatus("ok", value ? "Vai abrir com o Windows, na bandeja" : "Não abre mais com o Windows");
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException
+                                               or IOException or InvalidOperationException)
+                {
+                    PostStatus("error", "Não deu para alterar a inicialização: " + ex.Message);
+                    PostState(); // volta o switch para o estado real
+                }
+                break;
         }
     }
 
@@ -523,6 +542,18 @@ public sealed class MainForm : Form
         Show();
         WindowState = FormWindowState.Normal;
         Activate();
+    }
+
+    /// <summary>Chamado pelo instalador (evento AkiraCore.Exit): sai de verdade, sem ir para a bandeja.</summary>
+    public void ExitFromInstaller()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(ExitFromInstaller);
+            return;
+        }
+        _exiting = true;
+        Close();
     }
 
     /// <summary>Chamado quando alguém tenta abrir uma segunda instância.</summary>

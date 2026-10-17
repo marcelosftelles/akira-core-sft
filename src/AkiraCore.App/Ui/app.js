@@ -16,7 +16,7 @@ const state = {
   effects: [],
   lighting: { effect: "rolling", color: "#FF0000", brightness: 5, speed: 3, reverse: false, rainbow: true },
   lightOn: true,
-  options: { swapRedBlue: false, simulate: false },
+  options: { swapRedBlue: false, simulate: false, startWithWindows: false },
   device: { connected: false, channel: null, name: "" },
   view: "lighting",
 };
@@ -269,14 +269,15 @@ for (const button of document.querySelectorAll(".segmented button")) {
 
 // --- Ajustes ---------------------------------------------------------------------
 
+// Interruptor da tela → nome da opção no contrato com o app
+const OPTIONS = { swap: "swapRedBlue", simulate: "simulate", startup: "startWithWindows" };
+
 function renderSettings() {
-  $("swap").checked = state.options.swapRedBlue;
-  $("simulate").checked = state.options.simulate;
+  for (const [id, option] of Object.entries(OPTIONS)) $(id).checked = Boolean(state.options[option]);
 }
 
-for (const key of ["swap", "simulate"]) {
-  $(key).addEventListener("change", (e) => {
-    const option = key === "swap" ? "swapRedBlue" : "simulate";
+for (const [id, option] of Object.entries(OPTIONS)) {
+  $(id).addEventListener("change", (e) => {
     state.options[option] = e.target.checked;
     renderDevice();
     host.post({ type: "setOption", key: option, value: e.target.checked });

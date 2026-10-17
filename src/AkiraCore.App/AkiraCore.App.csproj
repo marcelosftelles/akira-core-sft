@@ -11,6 +11,16 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>AkiraCore</AssemblyName>
     <RootNamespace>AkiraCore.App</RootNamespace>
+    <ApplicationIcon>Assets\akira.ico</ApplicationIcon>
+    <!-- Metadados exibidos nas propriedades do .exe e no instalador -->
+    <Version>1.0.0</Version>
+    <Product>AkiraCore</Product>
+    <AssemblyTitle>AkiraCore</AssemblyTitle>
+    <Description>Controle de iluminação do teclado AKIRA CORE</Description>
+    <Company>AkiraCore</Company>
+    <Copyright>Projeto AkiraCore, 2026</Copyright>
+    <!-- Versão limpa nas propriedades do .exe (sem o hash do commit) -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -26,6 +36,7 @@
   <ItemGroup>
     <!-- Interface HTML embutida no executável e servida pelo EmbeddedUi -->
     <EmbeddedResource Include="Ui\*.html;Ui\*.css;Ui\*.js" LogicalName="Ui/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\akira.ico" LogicalName="Assets/akira.ico" />
   </ItemGroup>
 
   <!-- O pacote do WebView2 referencia o controle de WPF em todo app .NET 5+. Este app é só

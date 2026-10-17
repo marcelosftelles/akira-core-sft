@@ -3,3 +3,7 @@ obj/
 .vs/
 *.user
 TestResults/
+
+# Saídas do build do instalador
+artifacts/
+dist/

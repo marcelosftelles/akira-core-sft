@@ -44,7 +44,7 @@ export function createMockHost() {
             rainbow: params.get("rainbow") !== "0",
           },
           lightOn: params.get("off") !== "1",
-          options: { swapRedBlue: false, simulate: false },
+          options: { swapRedBlue: false, simulate: false, startWithWindows: true },
           device,
         });
         if (params.get("view")) {
