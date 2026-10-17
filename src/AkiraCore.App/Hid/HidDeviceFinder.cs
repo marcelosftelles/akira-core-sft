@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using AkiraCore.Core.Diagnostics;
 using AkiraCore.Core.Links;
 using static AkiraCore.App.Hid.NativeMethods;
 
@@ -16,6 +17,12 @@ public sealed record HidCollection(DeviceProfile Profile, string Path, ushort Us
 {
     public ChannelKind Kind =>
         ChannelClassifier.Classify(InputReportLength, OutputReportLength, FeatureReportLength);
+
+    /// <summary>Rótulo para o log: "MI_01 COL03 page 0x000C/0x0001".</summary>
+    public string Label => $"{HidPathInfo.InterfaceLabel(Path)} page 0x{UsagePage:X4}/0x{Usage:X4}";
+
+    /// <summary>Teclado e mouse ficam presos pelo Windows: ReadFile nunca abre essas coleções.</summary>
+    public bool IsLockedBySystem => UsagePage == 0x01 && Usage is 0x02 or 0x06;
 }
 
 /// <summary>

@@ -85,4 +85,55 @@ internal static class NativeMethods
     [DllImport("setupapi.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetupDiDestroyDeviceInfoList(IntPtr deviceInfoSet);
+
+    // --- Raw Input: única forma de ver as teclas, já que o Windows trava a coleção de teclado
+
+    public const int WmInput = 0x00FF;
+    public const uint RidInput = 0x10000003;
+    public const uint RidiDeviceName = 0x20000007;
+    public const uint RidevRemove = 0x00000001;
+    public const uint RidevInputSink = 0x00000100;   // recebe mesmo com a janela em segundo plano
+    public const uint RimTypeKeyboard = 1;
+    public const ushort RiKeyBreak = 0x01;            // tecla solta
+    public const ushort RiKeyE0 = 0x02;               // prefixo E0 (ex.: Ctrl e Alt da direita)
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RawInputDevice
+    {
+        public ushort UsagePage;
+        public ushort Usage;
+        public uint Flags;
+        public IntPtr Target;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RawInputHeader
+    {
+        public uint Type;
+        public uint Size;
+        public IntPtr Device;
+        public IntPtr WParam;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RawKeyboard
+    {
+        public ushort MakeCode;
+        public ushort Flags;
+        public ushort Reserved;
+        public ushort VKey;
+        public uint Message;
+        public uint ExtraInformation;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool RegisterRawInputDevices([In] RawInputDevice[] devices, uint count, uint size);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetRawInputData(IntPtr rawInput, uint command, IntPtr data, ref uint size,
+        uint headerSize);
+
+    [DllImport("user32.dll", EntryPoint = "GetRawInputDeviceInfoW")]
+    public static extern uint GetRawInputDeviceInfo(IntPtr device, uint command, IntPtr data, ref uint size);
 }
