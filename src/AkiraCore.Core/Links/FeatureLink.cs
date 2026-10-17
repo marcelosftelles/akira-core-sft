@@ -56,6 +56,12 @@ public sealed class FeatureLink(IFeaturePort port, IDelay? delay = null) : IKeyb
         }
     }
 
+    // No cabo o app oficial não tem comando de reset: só reenvia os padrões (fcn.00434ee0)
+    public bool HasDeviceFactoryReset => false;
+
+    public void SendFactoryReset() =>
+        throw new NotSupportedException("O cabo não tem comando de reset de fábrica no app oficial.");
+
     private bool SendOne(byte[] report, bool waitAck)
     {
         _delay.Wait(FeatureProtocol.CommandDelay);

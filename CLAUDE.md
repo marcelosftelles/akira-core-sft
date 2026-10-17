@@ -12,8 +12,10 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
 - `AkiraCore.App` só tem tela (WinForms), P/Invoke HID e o Laboratório.
 - Todo offset de byte novo ganha teste em `tests/AkiraCore.Core.Tests` citando a função de origem
   no binário oficial (ex.: `fcn.0042b170`).
-- Segurança: só comandos de iluminação. **Nunca** implementar nada do fluxo de atualização de
-  firmware (`FirmwareUpdateTool.zip`). Opcodes desconhecidos não são enviados às cegas.
+- Segurança: só comandos de iluminação, mais o reset de fábrica oficial (`0F` no dongle,
+  pedido do usuário em 17/10/2026). **Nunca** implementar nada do fluxo de atualização de
+  firmware (`FirmwareUpdateTool.zip`). Opcodes desconhecidos não são enviados às cegas: tudo
+  se baseia no que o instalador oficial já mapeia.
 
 ## Build e testes
 
@@ -89,9 +91,16 @@ Ferramentas novas no Laboratório para fechar a questão:
 - Seção 5: foto do estado (GET_REPORT só leitura e, opcional, ACKs completos reaplicando o
   efeito) com diff contra a foto anterior. Regras em `AkiraCore.Core.Diagnostics`.
 
-**Próximo passo:** usuário roda os testes T0 a T3 de `docs/investigacao-fitas.md`, envia os
-logs e a lista de atalhos, e envia o instalador oficial para o T5 (procurar o `04 F5`, leitura
-de cores, perto de `fcn.0042adb0`). Análise de imagem de firmware só com autorização explícita.
+Atalhos do manual: laterais = Fn + Shift esq. (modo), Fn + Z (cor), Fn + Alt esq. (brilho);
+loading bar (mini fita) = Fn + Shift dir., Fn + /?, Fn + Alt dir. Mesmas teclas do F108 Pro.
+
+Instalador analisado (T5): sem imagem de firmware; `04 F5` (ler as 576 bytes de cores por
+LED) em `fcn.0042adb0`; reset de fábrica oficial mapeado e implementado
+(`KeyboardClient.RestoreFactoryDefaults`, botão "Restaurar padrão de fábrica"): `0F` no dongle
++ iluminação padrão; no cabo só a iluminação padrão, porque o oficial não tem comando.
+
+**Próximo passo:** usuário roda T0 a T3 e envia os logs. Depois, implementar a leitura `04 F5`
+no Laboratório (só cabo) e comparar a tabela antes e depois de `Fn + Z` e `Fn + /?`.
 
 Se encontrar os índices: criar `ExtraZone` (canto esquerdo, canto direito, mini fita) no Core,
 UI com cor por zona, e explicar o trade-off (no modo `0x80` as teclas ficam com cor fixa).

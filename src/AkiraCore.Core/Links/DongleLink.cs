@@ -25,6 +25,15 @@ public sealed class DongleLink(IReportPort port, IDelay? delay = null) : IKeyboa
         }
     }
 
+    public bool HasDeviceFactoryReset => true;
+
+    public void SendFactoryReset()
+    {
+        SendReport(PacketBuilder.DongleReport([DongleProtocol.FactoryResetCommand]));
+        // O oficial espera 50 ms antes de reenviar a iluminação (fcn.00434ee0)
+        _delay.Wait(DongleProtocol.FactoryResetSettleDelay);
+    }
+
     private void SendReport(byte[] report)
     {
         if (!port.Write(report))

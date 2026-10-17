@@ -27,6 +27,7 @@ public sealed class MainForm : Form
     private readonly Button _offButton = new() { Text = "Desligar luz", Width = 105, Height = 34 };
     private readonly Button _diagnoseButton = new() { Text = "Diagnóstico", AutoSize = true };
     private readonly Button _labButton = new() { Text = "Laboratório", AutoSize = true };
+    private readonly Button _factoryButton = new() { Text = "Restaurar padrão de fábrica", AutoSize = true };
     private LabForm? _labForm;
     private readonly Label _statusLabel = new() { AutoSize = true, MaximumSize = new Size(240, 0) };
     private readonly TextBox _logBox = new()
@@ -91,7 +92,8 @@ public sealed class MainForm : Form
         AddRow("", _swapCheck);
         AddRow("", _simulateCheck);
         var tools = new FlowLayoutPanel { AutoSize = true };
-        tools.Controls.AddRange([_diagnoseButton, _labButton]);
+        tools.Controls.AddRange([_diagnoseButton, _labButton, _factoryButton]);
+        _factoryButton.Click += async (_, _) => await RestoreFactoryDefaultsAsync();
         AddRow("", tools);
         _labButton.Click += (_, _) => OpenLab();
         _diagnoseButton.Click += (_, _) => RunDiagnostics();
@@ -302,9 +304,60 @@ public sealed class MainForm : Form
     private Task ApplyLightingAsync(LightingConfig config) =>
         RunOnKeyboardAsync(client => client.ApplyLighting(config), () => SaveSettings(config));
 
-    private async Task RunOnKeyboardAsync(Action<KeyboardClient> action, Action onSuccess)
+    /// <summary>
+    /// Igual ao "Redefinição de fábrica" do app oficial (fcn.00414870), na parte que este
+    /// app controla. Ver KeyboardClient.RestoreFactoryDefaults.
+    /// </summary>
+    private async Task RestoreFactoryDefaultsAsync()
     {
-        Button[] buttons = [_applyButton, _offButton];
+        var isDongle = HidDeviceFinder.FindCommandInterface()?.Kind == ChannelKind.Dongle;
+        // No 2.4G, mesmo aviso do oficial (texto 167 do 1046.lan)
+        var question = isDongle
+            ? "A redefinição de fábrica apagará todos os dados. Deseja continuar?\n\n" +
+              "Pelo dongle, o teclado recebe o reset do próprio firmware (o mesmo do app oficial): " +
+              "teclas remapeadas, macros e iluminação guardadas no teclado voltam ao padrão."
+            : "Pelo cabo, o app oficial não tem comando de reset do teclado: ele só reenvia os padrões. " +
+              "Isto reaplica a iluminação de fábrica (Rolando, arco-íris, brilho 5, velocidade 3).\n\n" +
+              "As fitas não mudam por aqui. Use os atalhos do teclado:\n" +
+              "  Laterais: Fn + Shift esq. (modo), Fn + Z (cor), Fn + Alt esq. (brilho)\n" +
+              "  Loading bar: Fn + Shift dir. (modo), Fn + /? (cor), Fn + Alt dir. (brilho)\n\n" +
+              "Continuar?";
+        if (MessageBox.Show(this, question, "Redefinição de fábrica", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        var swapRedBlue = _swapCheck.Checked;
+        var scope = FactoryResetScope.LightingOnly;
+        await RunOnKeyboardAsync(
+            client => scope = client.RestoreFactoryDefaults(swapRedBlue),
+            () =>
+            {
+                LoadDefaultsIntoControls();
+                SaveSettings(BuildConfig());
+            },
+            () => scope == FactoryResetScope.DeviceAndLighting
+                ? "Teclado restaurado ao padrão de fábrica."
+                : "Iluminação de fábrica reaplicada (o cabo não tem reset do teclado).");
+    }
+
+    private void LoadDefaultsIntoControls()
+    {
+        var defaults = FactoryDefaults.Lighting;
+        _effectCombo.SelectedItem = defaults.Effect;
+        SetColor(Color.FromArgb(defaults.Color.R, defaults.Color.G, defaults.Color.B));
+        _brightnessBar.Value = defaults.Brightness;
+        _speedBar.Value = defaults.Speed;
+        _directionCheck.Checked = defaults.Direction != 0;
+        _rainbowCheck.Checked = defaults.Rainbow;
+        UpdateEnabledControls();
+    }
+
+    private async Task RunOnKeyboardAsync(Action<KeyboardClient> action, Action onSuccess,
+        Func<string>? successText = null)
+    {
+        Button[] buttons = [_applyButton, _offButton, _factoryButton];
         foreach (var b in buttons) b.Enabled = false;
         _statusLabel.ForeColor = SystemColors.ControlText;
         _statusLabel.Text = "Enviando...";
@@ -321,7 +374,9 @@ public sealed class MainForm : Form
 
             onSuccess();
             _statusLabel.ForeColor = Color.ForestGreen;
-            _statusLabel.Text = _simulateCheck.Checked ? "Simulado. Veja os bytes abaixo." : "Aplicado.";
+            _statusLabel.Text = _simulateCheck.Checked
+                ? "Simulado. Veja os bytes abaixo."
+                : successText?.Invoke() ?? "Aplicado.";
         }
         catch (Exception ex) when (ex is KeyboardException or System.ComponentModel.Win32Exception)
         {

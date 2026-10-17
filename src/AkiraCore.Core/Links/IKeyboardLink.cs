@@ -15,4 +15,10 @@ public interface IKeyboardLink : IDisposable
 
     /// <summary>Envia o buffer de 576 bytes com as cores de cada LED.</summary>
     void SendPerKeyColors(ReadOnlySpan<byte> buffer);
+
+    /// <summary>O canal tem o comando de reset de fábrica do próprio firmware (só o dongle).</summary>
+    bool HasDeviceFactoryReset { get; }
+
+    /// <summary>Reset de fábrica do firmware: apaga o que o teclado guardou (teclas, macros, luz).</summary>
+    void SendFactoryReset();
 }

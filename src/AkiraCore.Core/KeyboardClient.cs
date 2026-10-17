@@ -12,6 +12,25 @@ public sealed class KeyboardClient(IKeyboardLink link)
 {
     public void ApplyLighting(LightingConfig config) => link.SendLightBlock(config.ToLightBlock());
 
+    /// <summary>
+    /// Mesmo fluxo da "Redefinição de fábrica" oficial (fcn.00414870 → tarefa 14, fcn.00434ee0),
+    /// na parte que este app controla: no dongle, o reset do firmware (0F); nos dois canais,
+    /// a iluminação padrão. O oficial no cabo também reenvia macros, teclas e funções padrão,
+    /// que este app não mexe.
+    /// </summary>
+    /// <param name="swapRedBlue">Mantém a correção de cor local do usuário.</param>
+    public FactoryResetScope RestoreFactoryDefaults(bool swapRedBlue = false)
+    {
+        var scope = FactoryResetScope.LightingOnly;
+        if (link.HasDeviceFactoryReset)
+        {
+            link.SendFactoryReset();
+            scope = FactoryResetScope.DeviceAndLighting;
+        }
+        ApplyLighting(FactoryDefaults.Lighting with { SwapRedBlue = swapRedBlue });
+        return scope;
+    }
+
     public void SetSideLight(SideLightMode mode) =>
         link.SendLightBlock(PacketBuilder.SideLightBlock(mode.Value), LightTarget.SideStrips);
 
