@@ -9,6 +9,18 @@ A hipótese mais provável, com base na plataforma irmã, é que as três zonas 
 **só pelo firmware**, sem comando USB. Isso ainda não está provado para o AKIRA. Os testes
 abaixo decidem a questão em ordem de custo, do mais barato ao mais caro.
 
+## Atalhos do teclado (manual do AKIRA)
+
+| Zona | Modo | Cor | Brilho |
+|---|---|---|---|
+| LEDs laterais (fitas dos cantos) | Fn + Shift esquerdo | Fn + Z | Fn + Alt esquerdo |
+| Loading bar (mini fita do knob) | Fn + Shift direito | Fn + /? | Fn + Alt direito |
+
+São as mesmas teclas do AULA F108 Pro (lá: barra de luz com Shift/Alt esquerdo e Z; fitas
+laterais com Shift/Alt direito e /?), com os nomes das zonas trocados. Mais um sinal de que o
+firmware é o mesmo. Se uma zona apagar, o brilho ou o modo ciclou até "desligado": repita o
+atalho de brilho e depois o de modo até ela voltar.
+
 ## O que já foi descartado (com evidência)
 
 | Hipótese | Resultado | Fonte |
@@ -108,14 +120,28 @@ O USBPcap vê inclusive as coleções que o Windows esconde do app (teclado e mo
    enquanto aperta os atalhos e salve o `.sr`. O decodificador `rgb_led_ws281x` mostra a cor
    de cada LED. Confirme antes que as entradas do analisador aceitam 5 V.
 
-**T5. Instalador oficial (quando você enviar)**
-1. Localizar o `04 F5` no `DeviceDriver.exe` do AKIRA. Pelo deslocamento de 0x70, o
-   `FUN_0042ae20` deles deve estar perto de `fcn.0042adb0`. Se for leitura das cores por
-   LED, ele entra no Laboratório como leitura e na foto do estado.
-2. Listar todo opcode que o driver envia, para fechar a busca de comando lateral.
-3. Se houver imagem de firmware no pacote: só análise estática (nunca gravar) para achar o
-   tratador dos atalhos das fitas e ver se algum comando USB chega nele. Pede sua
-   autorização antes, porque toca no pacote de atualização de firmware.
+**T5. Instalador oficial (feito em 17/10/2026)**
+
+Instalador recebido, SHA-256 igual ao do `CLAUDE.md`. Extraído com `innoextract`, analisado
+com capstone (sem executar nada). Resultados:
+
+1. **Sem imagem de firmware:** o pacote não tem pasta `firmware` e o XML tem
+   `<firmware version="120" file="" url="" />`. Não há o que analisar do lado do teclado.
+2. **`04 F5` (ler cores por LED) existe**, em `fcn.0042adb0`, exatamente onde o deslocamento
+   previa. Só no cabo. Fluxo: `04 F5` com `[8] = 9` (ou 3 no modo monocromático) → espera o
+   ACK (até 10 leituras, 5 ms) → 9 GET_REPORT de 64 bytes (576 bytes, a mesma tabela do `04 23`)
+   → `04 02`. Não usa `04 18`. Próximo passo: ler essa tabela antes e depois de `Fn + Z` /
+   `Fn + /?` para ver se a cor das fitas aparece em algum índice sem tecla.
+3. **Todos os comandos que o driver monta** (`04 xx` e `05 xx`): `04 02`, `04 13`, `04 15`,
+   `04 17`, `04 18`, `04 19`, `04 20`, `04 23`, `04 28`, `04 2B`, `04 72`, `04 F0`, `04 F5`,
+   `05 01`, `05 02`, `05 03`, `05 10`, `7F 03`, além de `0F` e `1F` no dongle (reset) e
+   `07 10` (configurações gerais no dongle). Nenhum outro comando lateral além do já testado.
+4. **Reset de fábrica oficial** (`fcn.00414870`, textos 167/168, tarefa 14 em `fcn.00434ee0`):
+   no cabo não há comando de reset, o app só volta o banco local ao padrão e reenvia tudo
+   (macros, teclas, cores por LED, iluminação, configurações gerais). No 2.4G envia o report
+   `0F` (reset do firmware), espera 50 ms e reenvia a iluminação padrão. O "Reset Keyboard"
+   (`fcn.00414600`, textos 165/166) usa a tarefa 6 no cabo e o report `1F` no dongle.
+   Implementado como "Restaurar padrão de fábrica" na janela principal (só iluminação e o `0F`).
 
 ## Árvore de decisão
 

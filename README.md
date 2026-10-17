@@ -33,6 +33,19 @@ saiu da tela principal e foi para o Laboratório, junto com:
 A investigação completa, com a evidência do AULA F108 Pro (mesma plataforma, onde as fitas são
 só firmware) e o roteiro de testes, está em [`docs/investigacao-fitas.md`](docs/investigacao-fitas.md).
 
+## Restaurar padrão de fábrica
+
+Botão na janela principal, baseado na "Redefinição de fábrica" do app oficial (`fcn.00414870`):
+
+| Canal | O que é enviado |
+|---|---|
+| Dongle 2.4G | Report `0F` (reset do firmware: apaga teclas, macros e luz guardadas), 50 ms, iluminação padrão |
+| Cabo USB | Só a iluminação padrão. O app oficial não tem comando de reset no cabo |
+
+Iluminação padrão: Rolando (modo 11), arco-íris, vermelho, brilho 5, velocidade 3.
+As fitas não têm comando no PC; use os atalhos: laterais com Fn + Shift/Z/Alt esquerdos,
+loading bar com Fn + Shift/"/?"/Alt direitos.
+
 ## Cores por LED (modo personalizado)
 
 Modo `0x80` + buffer de 576 bytes, 4 bytes por LED `[índice, R, G, B]` na posição índice × 4,

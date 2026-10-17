@@ -70,6 +70,11 @@ public static class DongleProtocol
     public static readonly byte[] LightingHeader = [0x05, 0x10, 0x00];   // fcn.0042b170
     public static readonly byte[] SideLightHeader = [0x05, 0x01, 0x00];  // fcn.00434900
     public const int BlockOffset = 4;        // bloco de iluminação começa no byte 4
+    // "Redefinição de fábrica" oficial no 2.4G (fcn.00414870 → tarefa 14, fcn.00434ee0):
+    // report único com 0F, depois Sleep(50) e a iluminação padrão. No cabo não existe
+    // comando equivalente: o app oficial só reenvia os padrões.
+    public const byte FactoryResetCommand = 0x0F;
+    public static readonly TimeSpan FactoryResetSettleDelay = TimeSpan.FromMilliseconds(50);
     public const int ChecksumIndex = 32;     // soma dos bytes anteriores, 8 bits
     public const int ReadAttempts = 20;
     public static readonly TimeSpan WriteRetryDelay = TimeSpan.FromMilliseconds(10);
