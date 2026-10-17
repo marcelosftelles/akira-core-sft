@@ -23,6 +23,9 @@ dotnet run --project src/AkiraCore.App       # só executa no Windows
 ```
 
 O teste em hardware é feito pelo usuário no Windows; o ambiente de nuvem só compila e roda testes.
+No Linux, o `dotnet-sdk-8.0` do Ubuntu não traz os alvos de WinForms: copie a pasta
+`Sdks/Microsoft.NET.Sdk.WindowsDesktop` do pacote `dotnet-sdk-8.0` da Microsoft
+(packages.microsoft.com) para dentro do SDK instalado, senão `src/AkiraCore.App` não compila.
 
 ## Dispositivo
 
@@ -64,6 +67,7 @@ desligar, bandeja, configuração salva.
 
 **Em investigação: fitas dos cantos (esquerdo e direito) e mini fita perto do knob.**
 O usuário as controla por atalho do teclado; o software oficial não suporta.
+Detalhes, evidências e roteiro de testes em `docs/investigacao-fitas.md`.
 
 Descartado, com evidência:
 - Comando lateral oficial oculto (`sidelight="0"`, valores `0x20..0x29`, `05 01 00` no dongle):
@@ -72,14 +76,27 @@ Descartado, com evidência:
 - Canal de avisos (coleção 0xFFFF, prefixo `05 A6`): o atalho das fitas não gera nenhum report.
 - Varredura dos bytes 0 a 5 do bloco no `05 01`: só pisca, nada fixa.
 - Driver do AKIRA PRO (outra plataforma, Sinowealth 0x258A) e versão mais nova do SK11 (não existe).
+- Usuário relata que o Laboratório (incluindo LEDs sem tecla) não trouxe resultado; falta
+  confirmar se rodou "Varrer todos (1 a 142)".
 
-Hipótese ativa: as fitas são LEDs da matriz **sem tecla** (`LedMap.UnmappedIndices`).
-Ferramenta pronta: Laboratório → seção 4 → "Varrer LEDs sem tecla".
-**Próximo passo: o usuário rodar a varredura e informar quais índices acendem cada zona.**
+Evidência externa: o AULA F108 Pro (github.com/parsiya/f108-pro) é a mesma plataforma
+(Suoai, dongle 05AC:024F idêntico, mesmo erro de MI_00, funções do driver 0x60 a 0x70 depois
+das nossas). Lá as fitas e a barra de luz são **só firmware** (atalhos Fn) e o teclado dá ACK
+nos comandos laterais sem fazer nada. Hipótese mais provável para o AKIRA: igual.
+
+Ferramentas novas no Laboratório para fechar a questão:
+- Seção 1: monitor de todas as coleções HID legíveis + teclas do AKIRA via Raw Input + marcadores.
+- Seção 5: foto do estado (GET_REPORT só leitura e, opcional, ACKs completos reaplicando o
+  efeito) com diff contra a foto anterior. Regras em `AkiraCore.Core.Diagnostics`.
+
+**Próximo passo:** usuário roda os testes T0 a T3 de `docs/investigacao-fitas.md`, envia os
+logs e a lista de atalhos, e envia o instalador oficial para o T5 (procurar o `04 F5`, leitura
+de cores, perto de `fcn.0042adb0`). Análise de imagem de firmware só com autorização explícita.
 
 Se encontrar os índices: criar `ExtraZone` (canto esquerdo, canto direito, mini fita) no Core,
 UI com cor por zona, e explicar o trade-off (no modo `0x80` as teclas ficam com cor fixa).
-Se não encontrar: concluir que as fitas são controladas só pelo firmware.
+Se tudo der negativo: concluir que as fitas são controladas só pelo firmware e documentar os
+atalhos no app.
 
 ## Pendências menores
 

@@ -1,12 +1,14 @@
-using AkiraCore.Core.Links;
+using System.ComponentModel;
+using AkiraCore.Core.Diagnostics;
 using static AkiraCore.App.Hid.NativeMethods;
 
 namespace AkiraCore.App.Hid;
 
 /// <summary>
-/// Escuta input reports das coleções de fabricante (usage page 0xFF00 em diante).
-/// O app oficial faz algo parecido na coleção 0xFFFF para receber avisos do
-/// firmware ("05 A6 ..."), então atalhos do teclado podem aparecer aqui.
+/// Escuta input reports de todas as coleções do teclado que o Windows deixa abrir:
+/// fabricante (o app oficial lê avisos "05 A6 ..." na 0xFFFF), multimídia (0x0C),
+/// controle de sistema e o canal do dongle. Teclado e mouse ficam presos pelo
+/// Windows; as teclas são vistas pelo RawKeyboardMonitor.
 /// Cada handle recebe sua própria cópia dos reports: ler aqui não rouba o eco do dongle.
 /// </summary>
 public sealed class HidInputMonitor : IDisposable
@@ -21,22 +23,36 @@ public sealed class HidInputMonitor : IDisposable
         var opened = new List<string>();
         foreach (var collection in HidDeviceFinder.ListCollections())
         {
-            if (collection.UsagePage < 0xFF00 || collection.InputReportLength == 0)
+            if (collection.InputReportLength == 0)
             {
+                continue; // coleção só de feature (ex.: comandos do cabo): nada a escutar
+            }
+            if (collection.IsLockedBySystem)
+            {
+                opened.Add(collection.Usage == 0x06
+                    ? $"{collection.Label}: teclado, travado pelo Windows (aparece nas linhas TECLA)"
+                    : $"{collection.Label}: mouse, travado pelo Windows (ignorado)");
                 continue;
             }
             try
             {
-                var handle = HidHandle.Open(collection.Path, FileFlagOverlapped);
-                var stream = new FileStream(handle, FileAccess.ReadWrite, bufferSize: 0, isAsync: true);
+                // Só leitura: o monitor nunca escreve no teclado
+                var handle = CreateFile(collection.Path, GenericRead, FileShareReadWrite,
+                    IntPtr.Zero, OpenExisting, FileFlagOverlapped, IntPtr.Zero);
+                if (handle.IsInvalid)
+                {
+                    var error = new Win32Exception();
+                    handle.Dispose();
+                    throw error;
+                }
+                var stream = new FileStream(handle, FileAccess.Read, bufferSize: 0, isAsync: true);
                 _streams.Add(stream);
-                var label = $"page 0x{collection.UsagePage:X4}";
-                opened.Add($"{label} (in={collection.InputReportLength})");
-                _ = ListenAsync(stream, collection.InputReportLength, label, _cts.Token);
+                opened.Add($"{collection.Label} (in={collection.InputReportLength})");
+                _ = ListenAsync(stream, collection.InputReportLength, collection.Label, _cts.Token);
             }
-            catch (System.ComponentModel.Win32Exception)
+            catch (Exception ex) when (ex is Win32Exception or IOException or UnauthorizedAccessException)
             {
-                opened.Add($"page 0x{collection.UsagePage:X4}: sem acesso");
+                opened.Add($"{collection.Label}: sem acesso ({ex.Message})");
             }
         }
         return opened;
@@ -53,16 +69,19 @@ public sealed class HidInputMonitor : IDisposable
                 if (read > 0)
                 {
                     ReportReceived?.Invoke(
-                        $"{DateTime.Now:HH:mm:ss.fff} {label}  {Convert.ToHexString(buffer, 0, read)}");
+                        $"{DateTime.Now:HH:mm:ss.fff} HID   {label}  {HexText.Spaced(buffer.AsSpan(0, read))}");
                 }
             }
             catch (OperationCanceledException)
             {
                 return;
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
             {
-                ReportReceived?.Invoke($"{label}: dispositivo desconectado");
+                if (!token.IsCancellationRequested)
+                {
+                    ReportReceived?.Invoke($"{label}: leitura encerrada ({ex.Message})");
+                }
                 return;
             }
         }

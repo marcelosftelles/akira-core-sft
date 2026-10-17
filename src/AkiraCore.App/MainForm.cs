@@ -1,5 +1,6 @@
 using AkiraCore.App.Hid;
 using AkiraCore.Core;
+using AkiraCore.Core.Diagnostics;
 using AkiraCore.Core.Lighting;
 using AkiraCore.Core.Links;
 
@@ -250,7 +251,7 @@ public sealed class MainForm : Form
             _labForm.Activate();
             return;
         }
-        _labForm = new LabForm(OpenLink);
+        _labForm = new LabForm(OpenLink, BuildConfig);
         _labForm.Show(this);
     }
 
@@ -267,9 +268,12 @@ public sealed class MainForm : Form
         RefreshDeviceStatus();
     }
 
-    private IKeyboardLink OpenLink()
+    /// <param name="trace">Se informado, guarda as respostas completas do teclado (Laboratório).</param>
+    private IKeyboardLink OpenLink(ExchangeLog? trace = null)
     {
         var device = HidDeviceFinder.FindCommandInterface();
+        IFeaturePort Feature(IFeaturePort port) => trace?.Wrap(port) ?? port;
+        IReportPort Report(IReportPort port) => trace?.Wrap(port) ?? port;
 
         if (_simulateCheck.Checked)
         {
@@ -279,11 +283,11 @@ public sealed class MainForm : Form
             {
                 var reportPort = new RecordingReportPort();
                 reportPort.Logged += Log;
-                return new DongleLink(reportPort);
+                return new DongleLink(Report(reportPort));
             }
             var featurePort = new RecordingFeaturePort();
             featurePort.Logged += Log;
-            return new FeatureLink(featurePort);
+            return new FeatureLink(Feature(featurePort));
         }
 
         if (device is null)
@@ -291,8 +295,8 @@ public sealed class MainForm : Form
             throw new KeyboardException("Teclado não encontrado.");
         }
         return device.Kind == ChannelKind.Dongle
-            ? new DongleLink(new HidReportPort(device.Path))
-            : new FeatureLink(new HidFeaturePort(device.Path));
+            ? new DongleLink(Report(new HidReportPort(device.Path)))
+            : new FeatureLink(Feature(new HidFeaturePort(device.Path)));
     }
 
     private Task ApplyLightingAsync(LightingConfig config) =>

@@ -23,9 +23,15 @@ Não há cor livre nem controle separado de cada lado.
 **Status:** no cabo, o firmware deste teclado pisca e ignora esses valores. Por isso a função
 saiu da tela principal e foi para o Laboratório, junto com:
 
-- Monitor de avisos: escuta as coleções de fabricante (o app oficial lê avisos `05 A6 ...`
-  na coleção 0xFFFF) para descobrir o que os atalhos de luz do teclado reportam.
+- Monitor de atalhos: escuta todas as coleções HID que o Windows deixa abrir (inclusive os
+  avisos `05 A6 ...` da coleção 0xFFFF) e as teclas do AKIRA via Raw Input, com marcadores
+  para anotar cada atalho apertado.
 - Bloco experimental: envia 16 bytes livres pelo canal de iluminação, com assinatura forçada.
+- Foto do estado: lê o que o teclado devolve (GET_REPORT, e opcionalmente os ACKs completos)
+  e mostra o que mudou desde a foto anterior.
+
+A investigação completa, com a evidência do AULA F108 Pro (mesma plataforma, onde as fitas são
+só firmware) e o roteiro de testes, está em [`docs/investigacao-fitas.md`](docs/investigacao-fitas.md).
 
 ## Cores por LED (modo personalizado)
 
