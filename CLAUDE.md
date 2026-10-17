@@ -9,7 +9,17 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
 
 - Nomes de classes, métodos e variáveis em inglês; comentários em português do Brasil.
 - Toda regra de protocolo fica em `AkiraCore.Core` (sem dependência de Windows, testável em Linux).
-- `AkiraCore.App` só tem tela (WinForms), P/Invoke HID e o Laboratório.
+- `AkiraCore.App` só tem a janela que hospeda a interface, bandeja, P/Invoke HID e o Laboratório.
+- A interface principal é HTML/CSS/JS em `src/AkiraCore.App/Ui` (sem bibliotecas, sem rede, CSP
+  `'self'`), embutida no .exe e servida pelo `EmbeddedUi` em `https://akira.ui` dentro de um WebView2.
+  O Laboratório continua WinForms (ferramenta técnica).
+- Contrato da interface: a página manda `ready`, `apply {lighting}`, `setLight {on, lighting}`,
+  `setOption {key, value}`, `factoryReset`, `diagnose`, `openLab`; o app responde `state`, `device`,
+  `status {kind, text}` e `log {title, lines}`. Validação em `AkiraCore.Core.Presentation`
+  (`LightingState`, `EffectView`): estado inválido nunca vira envio.
+- Visual: estilo Ajustes do macOS, fonte do sistema (Segoe UI Variable), um azul de destaque, tema
+  segue o Windows. A prévia do teclado é aproximada; geometria em `Ui/layout.js`, gerada do
+  `rgb-keyboard.xml` oficial.
 - Todo offset de byte novo ganha teste em `tests/AkiraCore.Core.Tests` citando a função de origem
   no binário oficial (ex.: `fcn.0042b170`).
 - Segurança: só comandos de iluminação, mais o reset de fábrica oficial (`0F` no dongle,
@@ -25,6 +35,11 @@ dotnet run --project src/AkiraCore.App       # só executa no Windows
 ```
 
 O teste em hardware é feito pelo usuário no Windows; o ambiente de nuvem só compila e roda testes.
+Para revisar a interface aqui: `python3 -m http.server` dentro de `src/AkiraCore.App/Ui` e
+screenshots com o Playwright do ambiente (`/opt/node-tools/node_modules/playwright`); o
+`dev-mock.js` faz o papel do app (parâmetros listados no README).
+O pacote do WebView2 referencia o controle WPF sempre; o `.csproj` remove essa referência
+(target `RemoveWebView2Wpf`) para não ter o aviso MSB3277.
 No Linux, o `dotnet-sdk-8.0` do Ubuntu não traz os alvos de WinForms: copie a pasta
 `Sdks/Microsoft.NET.Sdk.WindowsDesktop` do pacote `dotnet-sdk-8.0` da Microsoft
 (packages.microsoft.com) para dentro do SDK instalado, senão `src/AkiraCore.App` não compila.

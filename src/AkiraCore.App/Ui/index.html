@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>AKIRA CORE</title>
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1 class="wordmark">AKIRA CORE</h1>
+        <p class="device" id="device" data-state="searching">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="device-text">Procurando o teclado</span>
+        </p>
+      </div>
+
+      <p class="nav-title" id="effects-title">Efeitos</p>
+      <ul class="nav effects" id="effects" role="listbox" aria-labelledby="effects-title"></ul>
+
+      <ul class="nav nav-bottom">
+        <li><button class="nav-item" type="button" data-view="strips">Fitas e loading bar</button></li>
+        <li><button class="nav-item" type="button" data-view="settings">Ajustes</button></li>
+      </ul>
+    </aside>
+
+    <main class="detail">
+      <section class="view" id="view-lighting" aria-labelledby="effect-title">
+        <header class="head">
+          <div class="head-text">
+            <h2 id="effect-title">Rolando</h2>
+          </div>
+          <p class="status" role="status" aria-live="polite"></p>
+          <label class="toggle">
+            <span>Luz</span>
+            <input type="checkbox" role="switch" id="light-on" checked>
+          </label>
+        </header>
+
+        <figure class="stage" data-board></figure>
+
+        <div class="group">
+          <div class="row" data-control="color">
+            <span class="label" id="color-label">Cor</span>
+            <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="color-label"></div>
+          </div>
+          <div class="row" data-control="rainbow">
+            <label class="label" for="rainbow">Arco-íris</label>
+            <input type="checkbox" role="switch" id="rainbow">
+          </div>
+          <div class="row" data-control="brightness">
+            <label class="label" for="brightness">Brilho</label>
+            <div class="slider">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 3.5v1.5M10 15v1.5M3.5 10H5M15 10h1.5"/></svg>
+              <input type="range" id="brightness" min="0" max="5" step="1">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2.5M10 16v2.5M1.5 10H4M16 10h2.5M4 4l1.8 1.8M14.2 14.2L16 16M4 16l1.8-1.8M14.2 5.8L16 4"/></svg>
+            </div>
+          </div>
+          <div class="row" data-control="speed">
+            <label class="label" for="speed">Velocidade</label>
+            <div class="slider">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5"/></svg>
+              <input type="range" id="speed" min="0" max="5" step="1">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5l5 5-5 5M10 5l5 5-5 5"/></svg>
+            </div>
+          </div>
+          <div class="row" data-control="direction">
+            <span class="label" id="direction-label">Direção</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="direction-label">
+              <button type="button" role="radio" data-reverse="false">Normal</button>
+              <button type="button" role="radio" data-reverse="true">Invertida</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-strips" aria-labelledby="strips-title" hidden>
+        <header class="head">
+          <div class="head-text">
+            <h2 id="strips-title">Fitas e loading bar</h2>
+            <p class="lede">Estas luzes respondem só ao teclado. Nem o app oficial tem comando para elas,
+              então a cor, o modo e o brilho mudam pelos atalhos abaixo.</p>
+          </div>
+        </header>
+
+        <figure class="stage" data-board data-zones></figure>
+
+        <h3 class="group-title">Fitas laterais, nos cantos de baixo</h3>
+        <div class="group" data-zone-group="strips">
+          <div class="row"><span class="label">Trocar o modo</span><span class="keys"><kbd>Fn</kbd><kbd>Shift esquerdo</kbd></span></div>
+          <div class="row"><span class="label">Trocar a cor</span><span class="keys"><kbd>Fn</kbd><kbd>Z</kbd></span></div>
+          <div class="row"><span class="label">Ajustar o brilho</span><span class="keys"><kbd>Fn</kbd><kbd>Alt esquerdo</kbd></span></div>
+        </div>
+
+        <h3 class="group-title">Loading bar, ao lado do knob</h3>
+        <div class="group" data-zone-group="bar">
+          <div class="row"><span class="label">Trocar o modo</span><span class="keys"><kbd>Fn</kbd><kbd>Shift direito</kbd></span></div>
+          <div class="row"><span class="label">Trocar a cor</span><span class="keys"><kbd>Fn</kbd><kbd>/ ?</kbd></span></div>
+          <div class="row"><span class="label">Ajustar o brilho</span><span class="keys"><kbd>Fn</kbd><kbd>Alt direito</kbd></span></div>
+        </div>
+
+        <p class="note">Se uma delas apagar, repita o atalho de brilho. Se não voltar, repita o de modo:
+          um dos modos é desligado.</p>
+      </section>
+
+      <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
+        <header class="head">
+          <div class="head-text">
+            <h2 id="settings-title">Ajustes</h2>
+          </div>
+          <p class="status" role="status" aria-live="polite"></p>
+        </header>
+
+        <div class="group">
+          <div class="row">
+            <label class="label" for="swap">Corrigir cores
+              <small>Troca vermelho e azul, se as cores saírem invertidas</small></label>
+            <input type="checkbox" role="switch" id="swap">
+          </div>
+          <div class="row">
+            <label class="label" for="simulate">Simular envio
+              <small>Mostra os bytes sem mandar nada ao teclado</small></label>
+            <input type="checkbox" role="switch" id="simulate">
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="row">
+            <span class="label">Diagnóstico <small>Lista o que o Windows vê do teclado</small></span>
+            <button class="button" type="button" id="diagnose">Executar</button>
+          </div>
+          <div class="row">
+            <span class="label">Laboratório <small>Ferramentas da investigação do protocolo</small></span>
+            <button class="button" type="button" id="open-lab">Abrir</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="row">
+            <span class="label">Padrão de fábrica <small>Rolando, arco-íris, brilho 5, velocidade 3</small></span>
+            <button class="button destructive" type="button" id="reset">Restaurar…</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="log" id="log" hidden aria-labelledby="log-title">
+        <div class="log-head">
+          <h3 id="log-title">Bytes enviados</h3>
+          <button class="link" type="button" id="log-clear">Limpar</button>
+        </div>
+        <pre id="log-body"></pre>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="alert" id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+    <form method="dialog">
+      <h3 id="confirm-title">Restaurar o padrão de fábrica?</h3>
+      <p id="confirm-text"></p>
+      <div class="alert-actions">
+        <button class="button" value="cancel" autofocus>Cancelar</button>
+        <button class="button destructive filled" value="confirm">Restaurar</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

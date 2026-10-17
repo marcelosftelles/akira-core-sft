@@ -12,6 +12,7 @@ public sealed class AppSettings
     public bool ReverseDirection { get; set; }
     public bool Rainbow { get; set; }
     public bool SwapRedBlue { get; set; }
+    public bool LightOn { get; set; } = true;
     public string SideLightKey { get; set; } = "flowing";
 
     private static readonly string FilePath = Path.Combine(

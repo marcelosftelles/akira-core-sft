@@ -13,8 +13,27 @@
     <RootNamespace>AkiraCore.App</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- O WebView2Loader.dll nativo vai dentro do .exe quando publicado como arquivo único -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\AkiraCore.Core\AkiraCore.Core.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Interface HTML embutida no executável e servida pelo EmbeddedUi -->
+    <EmbeddedResource Include="Ui\*.html;Ui\*.css;Ui\*.js" LogicalName="Ui/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- O pacote do WebView2 referencia o controle de WPF em todo app .NET 5+. Este app é só
+       WinForms: remover evita o conflito de WindowsBase (MSB3277) e uma DLL inútil na saída. -->
+  <Target Name="RemoveWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
 
 </Project>
