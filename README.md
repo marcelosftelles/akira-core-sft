@@ -3,6 +3,23 @@
 App próprio para controlar a iluminação do teclado AKIRA CORE (ADAMANTIUN GAMER) no Windows.
 Protocolo reconstruído por engenharia reversa do driver oficial v1.0.0.0.
 
+## Interface
+
+Visual inspirado nos Ajustes do macOS: barra lateral com os 19 efeitos, painel com uma prévia
+animada do teclado (desenhada com as posições das 82 teclas do `rgb-keyboard.xml` oficial) e
+grupos com cor, arco-íris, brilho, velocidade e direção. Não há botão "Aplicar": a mudança vai para
+o teclado ao soltar o controle. Tema claro e escuro seguem o Windows.
+
+A tela é HTML/CSS/JS (`src/AkiraCore.App/Ui`) dentro de um WebView2, embutida no executável e
+servida em `https://akira.ui` sem tocar na rede. Precisa do
+[Microsoft Edge WebView2 Runtime](https://go.microsoft.com/fwlink/p/?LinkId=2124703), que já vem no
+Windows 11 e no Windows 10 atualizado; sem ele o app avisa e a bandeja continua funcionando.
+
+Para revisar o visual sem Windows: sirva a pasta `Ui` (`python -m http.server` dentro dela) e abra
+`index.html` num navegador. Sem WebView2 a página usa o `dev-mock.js`, que aceita `?view=strips`,
+`?view=settings`, `?device=dongle|none`, `?off=1`, `?effect=static&rainbow=0&color=%2300E5FF`,
+`?log=1` e `?dialog=1`.
+
 ## Canais suportados
 
 | Conexão | Interface | Formato |
@@ -35,7 +52,7 @@ só firmware) e o roteiro de testes, está em [`docs/investigacao-fitas.md`](doc
 
 ## Restaurar padrão de fábrica
 
-Botão na janela principal, baseado na "Redefinição de fábrica" do app oficial (`fcn.00414870`):
+Em Ajustes › Padrão de fábrica, baseado na "Redefinição de fábrica" do app oficial (`fcn.00414870`):
 
 | Canal | O que é enviado |
 |---|---|
@@ -60,7 +77,7 @@ O layout oficial usa 82 dos índices 1 a 121; os demais (ver `LedMap.UnmappedInd
 | Projeto | Papel |
 |---|---|
 | `src/AkiraCore.Core` | Protocolo, efeitos e regras. Sem dependência de Windows. |
-| `src/AkiraCore.App` | Interface WinForms, ícone na bandeja e acesso HID via P/Invoke. |
+| `src/AkiraCore.App` | Janela WinForms que hospeda a interface HTML (WebView2), bandeja, Laboratório e HID via P/Invoke. |
 | `tests/AkiraCore.Core.Tests` | Testes dos pacotes byte a byte (xUnit). |
 
 ## Rodar
@@ -70,7 +87,7 @@ dotnet test
 dotnet run --project src/AkiraCore.App
 ```
 
-Feche o app oficial pela bandeja antes de usar. Marque "Simular" para ver os bytes sem enviar.
+Feche o app oficial pela bandeja antes de usar. Em Ajustes, "Simular envio" mostra os bytes sem enviar.
 
 ## Gerar o executável
 
@@ -82,6 +99,6 @@ Para iniciar escondido na bandeja: `AkiraCore.exe --hidden`.
 
 ## Suposições ainda não confirmadas em hardware
 
-- Ordem das cores no pacote (R, G, B). Se vermelho acender azul, marque "Corrigir cores".
+- Ordem das cores no pacote (R, G, B). Se vermelho acender azul, ligue Ajustes › Corrigir cores.
 - Faixa do campo de direção (o app usa 0 ou 1).
 - Função exata do comando 0xF0 (enviado porque o app oficial sempre envia).

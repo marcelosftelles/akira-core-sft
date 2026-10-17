@@ -11,6 +11,7 @@ public enum EffectCapabilities
     Brightness = 0x01,
     Speed = 0x02,
     Direction = 0x04,
+    DirectionAlt = 0x08,   // só no Rolagem; o oficial mostra outro par de direções
     Color = 0x10,
     Rainbow = 0x20,
 }
@@ -41,7 +42,7 @@ public static class EffectCatalog
         new(7, "breath", "Respiração", Standard),
         new(8, "spectrum", "Espectro", EffectCapabilities.Brightness | EffectCapabilities.Speed),
         new(9, "outward", "Para fora", Standard),
-        new(10, "scrolling", "Rolagem", Standard | (EffectCapabilities)0x08),
+        new(10, "scrolling", "Rolagem", Standard | EffectCapabilities.DirectionAlt),
         new(11, "rolling", "Rolando", Directional),
         new(12, "rotating", "Rotacionando", Directional),
         new(13, "explode", "Explodir", Standard),

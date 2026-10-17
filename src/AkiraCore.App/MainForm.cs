@@ -1,128 +1,91 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Text.Json;
 using AkiraCore.App.Hid;
+using AkiraCore.App.Web;
 using AkiraCore.Core;
 using AkiraCore.Core.Diagnostics;
 using AkiraCore.Core.Lighting;
 using AkiraCore.Core.Links;
+using AkiraCore.Core.Presentation;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+using Microsoft.Win32;
 
 namespace AkiraCore.App;
 
 /// <summary>
-/// Interface montada em código (sem Designer) para ficar legível no Git.
-/// A tela só traduz cliques em LightingConfig; toda regra fica no AkiraCore.Core.
+/// Janela principal: hospeda a interface HTML (pasta Ui) num WebView2 e traduz as
+/// mensagens dela em comandos do AkiraCore.Core. A bandeja continua em WinForms.
 /// </summary>
 public sealed class MainForm : Form
 {
+    private const int WmDeviceChange = 0x0219;
+    private const string RuntimeDownloadUrl = "https://go.microsoft.com/fwlink/p/?LinkId=2124703";
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly bool _startHidden;
-
-    private readonly ComboBox _effectCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
-    private readonly Button _colorButton = new() { Width = 220, Height = 32, FlatStyle = FlatStyle.Flat };
-    private readonly CheckBox _rainbowCheck = new() { Text = "Arco-íris", AutoSize = true };
-    private readonly TrackBar _brightnessBar = new() { Minimum = 0, Maximum = 5, Width = 220, TickFrequency = 1 };
-    private readonly TrackBar _speedBar = new() { Minimum = 0, Maximum = 5, Width = 220, TickFrequency = 1 };
-    private readonly CheckBox _directionCheck = new() { Text = "Inverter direção", AutoSize = true };
-    private readonly CheckBox _swapCheck = new() { Text = "Corrigir cores (trocar vermelho e azul)", AutoSize = true };
-    private readonly CheckBox _simulateCheck = new() { Text = "Simular (mostrar bytes sem enviar)", AutoSize = true };
-    private readonly Button _applyButton = new() { Text = "Aplicar", Width = 105, Height = 34 };
-    private readonly Button _offButton = new() { Text = "Desligar luz", Width = 105, Height = 34 };
-    private readonly Button _diagnoseButton = new() { Text = "Diagnóstico", AutoSize = true };
-    private readonly Button _labButton = new() { Text = "Laboratório", AutoSize = true };
-    private readonly Button _factoryButton = new() { Text = "Restaurar padrão de fábrica", AutoSize = true };
-    private LabForm? _labForm;
-    private readonly Label _statusLabel = new() { AutoSize = true, MaximumSize = new Size(240, 0) };
-    private readonly TextBox _logBox = new()
-    {
-        Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false,
-        Width = 760, Height = 160, Font = new Font("Consolas", 8.5f), Visible = false,
-    };
+    private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
     private readonly NotifyIcon _trayIcon = new() { Text = "AKIRA CORE", Icon = SystemIcons.Application };
+    // WM_DEVICECHANGE chega em rajadas: espera assentar antes de procurar o teclado
+    private readonly System.Windows.Forms.Timer _deviceTimer = new() { Interval = 700 };
+    // Um envio por vez: duas transações abertas juntas se misturariam no teclado
+    private readonly SemaphoreSlim _keyboardLock = new(1, 1);
 
-    private Color _selectedColor;
+    private LightingState _lighting;
+    private bool _simulate;
+    private bool _webReady;
+    private bool _sending;
+    private bool _dirty;
     private bool _exiting;
+    private LabForm? _labForm;
 
     public MainForm(bool startHidden)
     {
         _startHidden = startHidden;
+        _lighting = LoadLighting(_settings);
+
+        var dark = WindowChrome.IsDarkTheme();
         Text = "AKIRA CORE";
-        Font = new Font("Segoe UI", 10f);
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
-        AutoSize = true;
-        AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        Padding = new Padding(16);
+        Font = new Font("Segoe UI", 9f);
+        StartPosition = FormStartPosition.CenterScreen;
+        var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 800);
+        Size = new Size(Math.Min(1000, workArea.Width), Math.Min(740, workArea.Height));
+        MinimumSize = new Size(820, 600);
+        BackColor = WindowChrome.Ground(dark);
+        // Fundo da página antes dela pintar: evita um clarão branco no tema escuro
+        _web.DefaultBackgroundColor = WindowChrome.Ground(dark);
+        Controls.Add(_web);
 
-        BuildLayout();
         BuildTray();
-        LoadSettingsIntoControls();
-        RefreshDeviceStatus();
-    }
-
-    // --- Montagem da tela ----------------------------------------------------
-
-    private void BuildLayout()
-    {
-        var grid = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill };
-
-        void AddRow(string label, Control control)
+        _deviceTimer.Tick += (_, _) =>
         {
-            grid.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 8, 16, 8) });
-            grid.Controls.Add(control);
-        }
-
-        _effectCombo.Items.AddRange([.. EffectCatalog.All]);
-        _effectCombo.SelectedIndexChanged += (_, _) => UpdateEnabledControls();
-        _colorButton.Click += (_, _) => PickColor();
-        _rainbowCheck.CheckedChanged += (_, _) => UpdateEnabledControls();
-        _simulateCheck.CheckedChanged += (_, _) => _logBox.Visible = _simulateCheck.Checked;
-        _applyButton.Click += async (_, _) => await ApplyLightingAsync(BuildConfig());
-        _offButton.Click += async (_, _) => await ApplyLightingAsync(new LightingConfig(EffectCatalog.Off, default));
-
-        AddRow("Efeito", _effectCombo);
-        AddRow("Cor", _colorButton);
-        AddRow("", _rainbowCheck);
-        AddRow("Brilho", _brightnessBar);
-        AddRow("Velocidade", _speedBar);
-        AddRow("", _directionCheck);
-
-        var buttons = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 12, 0, 0) };
-        buttons.Controls.AddRange([_applyButton, _offButton]);
-        AddRow("", buttons);
-
-        AddRow("", _statusLabel);
-        AddRow("", _swapCheck);
-        AddRow("", _simulateCheck);
-        var tools = new FlowLayoutPanel { AutoSize = true };
-        tools.Controls.AddRange([_diagnoseButton, _labButton, _factoryButton]);
-        _factoryButton.Click += async (_, _) => await RestoreFactoryDefaultsAsync();
-        AddRow("", tools);
-        _labButton.Click += (_, _) => OpenLab();
-        _diagnoseButton.Click += (_, _) => RunDiagnostics();
-
-        var root = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true };
-        root.Controls.AddRange([grid, _logBox]);
-        Controls.Add(root);
-        AcceptButton = _applyButton;
+            _deviceTimer.Stop();
+            PostDevice();
+        };
+        Activated += (_, _) => PostDevice();
+        SystemEvents.UserPreferenceChanged += OnThemeChanged;
     }
 
-    private void BuildTray()
+    // --- Ciclo de vida da janela -----------------------------------------------
+
+    protected override void OnHandleCreated(EventArgs e)
     {
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Abrir", null, (_, _) => ShowFromTray());
-        menu.Items.Add("Desligar luz", null, async (_, _) =>
-            await ApplyLightingAsync(new LightingConfig(EffectCatalog.Off, default)));
-        menu.Items.Add("Reaplicar última configuração", null, async (_, _) => await ApplyLightingAsync(BuildConfig()));
+        base.OnHandleCreated(e);
+        WindowChrome.Apply(Handle, WindowChrome.IsDarkTheme());
+    }
 
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Sair", null, (_, _) => { _exiting = true; Close(); });
-
-        _trayIcon.ContextMenuStrip = menu;
-        _trayIcon.DoubleClick += (_, _) => ShowFromTray();
-        _trayIcon.Visible = true;
+    protected override async void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        await InitializeWebAsync();
     }
 
     protected override void SetVisibleCore(bool value)
     {
-        // Com --hidden o app nasce direto no tray
+        // Com --hidden o app nasce direto na bandeja; a interface carrega quando abrir
         base.SetVisibleCore(_startHidden && !IsHandleCreated ? false : value);
         if (_startHidden && !IsHandleCreated)
         {
@@ -132,7 +95,7 @@ public sealed class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        // Fechar a janela só esconde; sair de verdade é pelo menu do tray
+        // Fechar a janela só esconde; sair de verdade é pelo menu da bandeja
         if (!_exiting && e.CloseReason == CloseReason.UserClosing)
         {
             e.Cancel = true;
@@ -143,131 +106,347 @@ public sealed class MainForm : Form
         base.OnFormClosing(e);
     }
 
-    private void ShowFromTray()
+    protected override void WndProc(ref Message m)
     {
-        Show();
-        WindowState = FormWindowState.Normal;
-        Activate();
-        RefreshDeviceStatus();
-    }
-
-    // --- Estado da tela ------------------------------------------------------
-
-    private void LoadSettingsIntoControls()
-    {
-        _effectCombo.SelectedItem = EffectCatalog.All.FirstOrDefault(e => e.Key == _settings.EffectKey)
-                                    ?? EffectCatalog.All[0];
-        SetColor(ColorTranslator.FromHtml("#" + _settings.ColorHex));
-        _brightnessBar.Value = Math.Clamp(_settings.Brightness, 0, 5);
-        _speedBar.Value = Math.Clamp(_settings.Speed, 0, 5);
-        _directionCheck.Checked = _settings.ReverseDirection;
-        _rainbowCheck.Checked = _settings.Rainbow;
-        _swapCheck.Checked = _settings.SwapRedBlue;
-        UpdateEnabledControls();
-    }
-
-    private Effect SelectedEffect => (Effect)_effectCombo.SelectedItem!;
-
-    private void UpdateEnabledControls()
-    {
-        // Cada efeito só libera os controles que o próprio firmware aceita (config_func)
-        var effect = SelectedEffect;
-        _rainbowCheck.Enabled = effect.Supports(EffectCapabilities.Rainbow);
-        _colorButton.Enabled = effect.Supports(EffectCapabilities.Color) && !_rainbowCheck.Checked;
-        _brightnessBar.Enabled = effect.Supports(EffectCapabilities.Brightness);
-        _speedBar.Enabled = effect.Supports(EffectCapabilities.Speed);
-        _directionCheck.Enabled = effect.Supports(EffectCapabilities.Direction);
-    }
-
-    private void PickColor()
-    {
-        using var dialog = new ColorDialog { Color = _selectedColor, FullOpen = true };
-        if (dialog.ShowDialog(this) == DialogResult.OK)
+        if (m.Msg == WmDeviceChange)
         {
-            SetColor(dialog.Color);
+            _deviceTimer.Stop();
+            _deviceTimer.Start();
         }
+        base.WndProc(ref m);
     }
 
-    private void SetColor(Color color)
+    private void OnThemeChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
-        _selectedColor = color;
-        _colorButton.BackColor = color;
-        _colorButton.ForeColor = color.GetBrightness() > 0.5f ? Color.Black : Color.White;
-        _colorButton.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        if (e.Category != UserPreferenceCategory.General || !IsHandleCreated)
+        {
+            return;
+        }
+        BeginInvoke(() =>
+        {
+            var dark = WindowChrome.IsDarkTheme();
+            WindowChrome.Apply(Handle, dark);
+            BackColor = WindowChrome.Ground(dark);
+            _web.DefaultBackgroundColor = WindowChrome.Ground(dark);
+        });
     }
 
-    private LightingConfig BuildConfig() =>
-        new(SelectedEffect,
-            new Rgb(_selectedColor.R, _selectedColor.G, _selectedColor.B),
-            _brightnessBar.Value,
-            _speedBar.Value,
-            direction: _directionCheck.Checked ? 1 : 0, // faixa real de direção ainda não confirmada
-            rainbow: _rainbowCheck.Checked)
+    // --- WebView2 ----------------------------------------------------------------
+
+    private async Task InitializeWebAsync()
+    {
+        try
         {
-            SwapRedBlue = _swapCheck.Checked,
+            // Pasta de dados em %LocalAppData%: a pasta do .exe pode não aceitar escrita
+            var dataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AkiraCore", "WebView2");
+            var environment = await CoreWebView2Environment.CreateAsync(null, dataFolder);
+            await _web.EnsureCoreWebView2Async(environment);
+        }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            ShowWebUnavailable("A interface precisa do Microsoft Edge WebView2 Runtime, que não está instalado. " +
+                               "Instale e abra o AkiraCore de novo.");
+            return;
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException
+                                       or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+        {
+            ShowWebUnavailable($"A interface não pôde iniciar ({ex.Message}). Reinstalar o WebView2 Runtime costuma resolver.");
+            return;
+        }
+
+        var core = _web.CoreWebView2;
+        var settings = core.Settings;
+        settings.AreDefaultContextMenusEnabled = false;
+        settings.AreDevToolsEnabled = Debugger.IsAttached;
+        settings.AreBrowserAcceleratorKeysEnabled = false;
+        settings.IsStatusBarEnabled = false;
+        settings.IsZoomControlEnabled = false;
+        settings.IsGeneralAutofillEnabled = false;
+        settings.IsPasswordAutosaveEnabled = false;
+
+        core.AddWebResourceRequestedFilter(EmbeddedUi.Origin + "/*", CoreWebView2WebResourceContext.All);
+        core.WebResourceRequested += (_, e) =>
+        {
+            var file = EmbeddedUi.Open(e.Request.Uri);
+            e.Response = file is { } f
+                ? core.Environment.CreateWebResourceResponse(f.Content, 200, "OK", $"Content-Type: {f.ContentType}")
+                : core.Environment.CreateWebResourceResponse(null, 404, "Not Found", "");
         };
-
-    private void SaveSettings(LightingConfig config)
-    {
-        if (config.Effect.Mode != 0)
+        // A página nunca sai do próprio app; links externos abrem no navegador padrão
+        core.NavigationStarting += (_, e) =>
         {
-            _settings.EffectKey = config.Effect.Key;
+            if (!EmbeddedUi.IsOwnUrl(e.Uri))
+            {
+                e.Cancel = true;
+            }
+        };
+        core.NewWindowRequested += (_, e) => e.Handled = true;
+        core.WebMessageReceived += OnWebMessage;
+        core.Navigate(EmbeddedUi.StartPage);
+    }
+
+    private void ShowWebUnavailable(string reason)
+    {
+        Controls.Remove(_web);
+        var panel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(40),
+        };
+        panel.Controls.Add(new Label
+        {
+            AutoSize = true, MaximumSize = new Size(560, 0), Font = new Font("Segoe UI", 11f),
+            Text = reason + " Enquanto isso, a bandeja continua funcionando.",
+        });
+        var link = new LinkLabel { AutoSize = true, Text = "Baixar o WebView2 Runtime", Margin = new Padding(0, 16, 0, 0) };
+        link.LinkClicked += (_, _) => Process.Start(new ProcessStartInfo(RuntimeDownloadUrl) { UseShellExecute = true });
+        panel.Controls.Add(link);
+        Controls.Add(panel);
+    }
+
+    private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        if (!EmbeddedUi.IsOwnUrl(e.Source))
+        {
+            return;
         }
-        _settings.ColorHex = $"{_selectedColor.R:X2}{_selectedColor.G:X2}{_selectedColor.B:X2}";
-        _settings.Brightness = _brightnessBar.Value;
-        _settings.Speed = _speedBar.Value;
-        _settings.ReverseDirection = _directionCheck.Checked;
-        _settings.Rainbow = _rainbowCheck.Checked;
-        _settings.SwapRedBlue = _swapCheck.Checked;
-        _settings.Save();
+        try
+        {
+            using var document = JsonDocument.Parse(e.WebMessageAsJson);
+            var message = document.RootElement;
+            switch (message.GetProperty("type").GetString())
+            {
+                case "ready":
+                    _webReady = true;
+                    PostState();
+                    break;
+                case "apply":
+                    if (AcceptLighting(message))
+                    {
+                        _settings.LightOn = true;
+                        QueueApply();
+                    }
+                    break;
+                case "setLight":
+                    if (AcceptLighting(message))
+                    {
+                        _settings.LightOn = message.GetProperty("on").GetBoolean();
+                        QueueApply();
+                    }
+                    break;
+                case "setOption":
+                    SetOption(message.GetProperty("key").GetString(), message.GetProperty("value").GetBoolean());
+                    break;
+                case "factoryReset":
+                    _ = RestoreFactoryDefaultsAsync();
+                    break;
+                case "diagnose":
+                    PostLog($"Diagnóstico às {DateTime.Now:HH:mm:ss}", HidDeviceFinder.Diagnose());
+                    break;
+                case "openLab":
+                    OpenLab();
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            // Mensagem malformada vinda da página: ignora, nada é enviado ao teclado
+            Debug.WriteLine($"Mensagem da interface ignorada: {ex.Message}");
+        }
     }
 
-    // --- Comunicação ---------------------------------------------------------
-
-    private void RefreshDeviceStatus()
+    /// <summary>Só troca o estado se ele for válido; senão avisa a tela e mantém o anterior.</summary>
+    private bool AcceptLighting(JsonElement message)
     {
-        var device = HidDeviceFinder.FindCommandInterface();
-        _statusLabel.ForeColor = device is null ? Color.Firebrick : Color.ForestGreen;
-        _statusLabel.Text = device is null
-            ? "Teclado não encontrado. Clique em Diagnóstico e me envie o resultado."
-            : device.Kind == ChannelKind.Dongle
-                ? $"Conectado: {device.Profile.Name}. Se não responder, aperte uma tecla para acordar o teclado."
-                : $"Conectado: {device.Profile.Name}";
+        var candidate = message.GetProperty("lighting").Deserialize<LightingState>(Json);
+        try
+        {
+            candidate?.ToConfig();
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            PostStatus("error", "Valor inválido: " + ex.Message);
+            return false;
+        }
+        if (candidate is null)
+        {
+            return false;
+        }
+        _lighting = candidate;
+        return true;
     }
 
-    /// <summary>Chamado quando alguém tenta abrir uma segunda instância.</summary>
-    public void ActivateFromAnotherInstance()
+    private void Post(object message)
     {
+        if (!_webReady || _web.CoreWebView2 is null)
+        {
+            return;
+        }
         if (InvokeRequired)
         {
-            BeginInvoke(ActivateFromAnotherInstance);
+            BeginInvoke(() => Post(message));
             return;
         }
-        ShowFromTray();
+        _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message, Json));
     }
 
-    private void OpenLab()
+    private void PostState() => Post(new
     {
-        if (_labForm is { IsDisposed: false })
+        type = "state",
+        effects = EffectView.Catalog,
+        lighting = _lighting,
+        lightOn = _settings.LightOn,
+        options = new { swapRedBlue = _settings.SwapRedBlue, simulate = _simulate },
+        device = DeviceInfo(),
+    });
+
+    private void PostDevice() => Post(new { type = "device", device = DeviceInfo() });
+
+    private void PostStatus(string kind, string text) => Post(new { type = "status", kind, text });
+
+    private void PostLog(string title, IEnumerable<string> lines) => Post(new { type = "log", title, lines });
+
+    private static object DeviceInfo()
+    {
+        var device = HidDeviceFinder.FindCommandInterface();
+        return new
         {
-            _labForm.Activate();
+            connected = device is not null,
+            channel = device is null ? null : device.Kind == ChannelKind.Dongle ? "dongle" : "usb",
+            name = device?.Profile.Name ?? "",
+        };
+    }
+
+    // --- Comandos ------------------------------------------------------------------
+
+    private static LightingState LoadLighting(AppSettings settings)
+    {
+        var saved = new LightingState(settings.EffectKey, "#" + settings.ColorHex, settings.Brightness,
+            settings.Speed, settings.ReverseDirection, settings.Rainbow);
+        try
+        {
+            saved.ToConfig(); // valida: arquivo editado à mão não pode quebrar o app
+            return saved;
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            return LightingState.From(FactoryDefaults.Lighting);
+        }
+    }
+
+    private LightingConfig CurrentConfig() => _lighting.ToConfig(_settings.SwapRedBlue);
+
+    /// <summary>
+    /// A interface pode mandar vários ajustes seguidos (arrastar, clicar rápido): só o
+    /// último importa. Um envio por vez, e ao terminar manda o estado mais recente.
+    /// </summary>
+    private async void QueueApply()
+    {
+        _dirty = true;
+        if (_sending)
+        {
             return;
         }
-        _labForm = new LabForm(OpenLink, BuildConfig);
-        _labForm.Show(this);
+        _sending = true;
+        try
+        {
+            while (_dirty)
+            {
+                _dirty = false;
+                LightingConfig config;
+                try
+                {
+                    config = _settings.LightOn ? CurrentConfig() : new LightingConfig(EffectCatalog.Off, default);
+                }
+                catch (Exception ex) when (ex is ArgumentException or FormatException)
+                {
+                    PostStatus("error", "Valor inválido: " + ex.Message);
+                    return;
+                }
+                if (await SendAsync(client => client.ApplyLighting(config)))
+                {
+                    SaveSettings();
+                    PostStatus("ok", _settings.LightOn ? "Aplicado" : "Luz desligada");
+                }
+            }
+        }
+        finally
+        {
+            _sending = false;
+        }
     }
 
-    private void RunDiagnostics()
+    private async Task RestoreFactoryDefaultsAsync()
     {
-        // Mostra o relatório na mesma caixa de log; dá para selecionar e copiar
-        _logBox.Visible = true;
-        _logBox.Clear();
-        _logBox.AppendText($"Diagnóstico em {DateTime.Now:HH:mm:ss}{Environment.NewLine}");
-        foreach (var line in HidDeviceFinder.Diagnose())
+        var swapRedBlue = _settings.SwapRedBlue;
+        var scope = FactoryResetScope.LightingOnly;
+        if (!await SendAsync(client => scope = client.RestoreFactoryDefaults(swapRedBlue)))
         {
-            _logBox.AppendText(line + Environment.NewLine);
+            return;
         }
-        RefreshDeviceStatus();
+        _lighting = LightingState.From(FactoryDefaults.Lighting);
+        _settings.LightOn = true;
+        SaveSettings();
+        PostState();
+        PostStatus("ok", scope == FactoryResetScope.DeviceAndLighting
+            ? "Teclado restaurado ao padrão de fábrica"
+            : "Iluminação de fábrica reaplicada");
+    }
+
+    /// <summary>Abre o canal, executa e fecha: não segura o dispositivo entre comandos.</summary>
+    private async Task<bool> SendAsync(Action<KeyboardClient> action)
+    {
+        PostStatus("busy", _simulate ? "Simulando…" : "Enviando…");
+        await _keyboardLock.WaitAsync();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var link = OpenLink();
+                action(new KeyboardClient(link));
+            });
+            return true;
+        }
+        catch (Exception ex) when (ex is KeyboardException or Win32Exception)
+        {
+            PostStatus("error", ex.Message);
+            return false;
+        }
+        finally
+        {
+            _keyboardLock.Release();
+        }
+    }
+
+    private void SetOption(string? key, bool value)
+    {
+        switch (key)
+        {
+            case "swapRedBlue":
+                _settings.SwapRedBlue = value;
+                SaveSettings();
+                if (_settings.LightOn)
+                {
+                    QueueApply(); // a correção muda as cores no teclado na hora
+                }
+                break;
+            case "simulate":
+                _simulate = value;
+                PostDevice();
+                break;
+        }
+    }
+
+    private void SaveSettings()
+    {
+        _settings.EffectKey = _lighting.Effect;
+        _settings.ColorHex = _lighting.Color.TrimStart('#');
+        _settings.Brightness = _lighting.Brightness;
+        _settings.Speed = _lighting.Speed;
+        _settings.ReverseDirection = _lighting.Reverse;
+        _settings.Rainbow = _lighting.Rainbow;
+        _settings.Save();
     }
 
     /// <param name="trace">Se informado, guarda as respostas completas do teclado (Laboratório).</param>
@@ -277,10 +456,10 @@ public sealed class MainForm : Form
         IFeaturePort Feature(IFeaturePort port) => trace?.Wrap(port) ?? port;
         IReportPort Report(IReportPort port) => trace?.Wrap(port) ?? port;
 
-        if (_simulateCheck.Checked)
+        if (_simulate)
         {
             // Simula o canal do dispositivo detectado; sem dispositivo, simula o cabo
-            void Log(string line) => BeginInvoke(() => _logBox.AppendText(line + Environment.NewLine));
+            void Log(string line) => PostLog("Bytes enviados", [line]);
             if (device?.Kind == ChannelKind.Dongle)
             {
                 var reportPort = new RecordingReportPort();
@@ -294,106 +473,78 @@ public sealed class MainForm : Form
 
         if (device is null)
         {
-            throw new KeyboardException("Teclado não encontrado.");
+            throw new KeyboardException("Teclado não encontrado. Confira o cabo ou o dongle e tente de novo.");
         }
         return device.Kind == ChannelKind.Dongle
             ? new DongleLink(Report(new HidReportPort(device.Path)))
             : new FeatureLink(Feature(new HidFeaturePort(device.Path)));
     }
 
-    private Task ApplyLightingAsync(LightingConfig config) =>
-        RunOnKeyboardAsync(client => client.ApplyLighting(config), () => SaveSettings(config));
-
-    /// <summary>
-    /// Igual ao "Redefinição de fábrica" do app oficial (fcn.00414870), na parte que este
-    /// app controla. Ver KeyboardClient.RestoreFactoryDefaults.
-    /// </summary>
-    private async Task RestoreFactoryDefaultsAsync()
+    private void OpenLab()
     {
-        var isDongle = HidDeviceFinder.FindCommandInterface()?.Kind == ChannelKind.Dongle;
-        // No 2.4G, mesmo aviso do oficial (texto 167 do 1046.lan)
-        var question = isDongle
-            ? "A redefinição de fábrica apagará todos os dados. Deseja continuar?\n\n" +
-              "Pelo dongle, o teclado recebe o reset do próprio firmware (o mesmo do app oficial): " +
-              "teclas remapeadas, macros e iluminação guardadas no teclado voltam ao padrão."
-            : "Pelo cabo, o app oficial não tem comando de reset do teclado: ele só reenvia os padrões. " +
-              "Isto reaplica a iluminação de fábrica (Rolando, arco-íris, brilho 5, velocidade 3).\n\n" +
-              "As fitas não mudam por aqui. Use os atalhos do teclado:\n" +
-              "  Laterais: Fn + Shift esq. (modo), Fn + Z (cor), Fn + Alt esq. (brilho)\n" +
-              "  Loading bar: Fn + Shift dir. (modo), Fn + /? (cor), Fn + Alt dir. (brilho)\n\n" +
-              "Continuar?";
-        if (MessageBox.Show(this, question, "Redefinição de fábrica", MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        if (_labForm is { IsDisposed: false })
         {
+            _labForm.Activate();
             return;
         }
-
-        var swapRedBlue = _swapCheck.Checked;
-        var scope = FactoryResetScope.LightingOnly;
-        await RunOnKeyboardAsync(
-            client => scope = client.RestoreFactoryDefaults(swapRedBlue),
-            () =>
-            {
-                LoadDefaultsIntoControls();
-                SaveSettings(BuildConfig());
-            },
-            () => scope == FactoryResetScope.DeviceAndLighting
-                ? "Teclado restaurado ao padrão de fábrica."
-                : "Iluminação de fábrica reaplicada (o cabo não tem reset do teclado).");
+        _labForm = new LabForm(OpenLink, CurrentConfig);
+        _labForm.Show(this);
     }
 
-    private void LoadDefaultsIntoControls()
+    // --- Bandeja -------------------------------------------------------------------
+
+    private void BuildTray()
     {
-        var defaults = FactoryDefaults.Lighting;
-        _effectCombo.SelectedItem = defaults.Effect;
-        SetColor(Color.FromArgb(defaults.Color.R, defaults.Color.G, defaults.Color.B));
-        _brightnessBar.Value = defaults.Brightness;
-        _speedBar.Value = defaults.Speed;
-        _directionCheck.Checked = defaults.Direction != 0;
-        _rainbowCheck.Checked = defaults.Rainbow;
-        UpdateEnabledControls();
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Abrir", null, (_, _) => ShowFromTray());
+        menu.Items.Add("Desligar luz", null, (_, _) => SetLightFromTray(false));
+        menu.Items.Add("Reaplicar última configuração", null, (_, _) => SetLightFromTray(true));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Sair", null, (_, _) =>
+        {
+            _exiting = true;
+            Close();
+        });
+
+        _trayIcon.ContextMenuStrip = menu;
+        _trayIcon.DoubleClick += (_, _) => ShowFromTray();
+        _trayIcon.Visible = true;
     }
 
-    private async Task RunOnKeyboardAsync(Action<KeyboardClient> action, Action onSuccess,
-        Func<string>? successText = null)
+    private void SetLightFromTray(bool on)
     {
-        Button[] buttons = [_applyButton, _offButton, _factoryButton];
-        foreach (var b in buttons) b.Enabled = false;
-        _statusLabel.ForeColor = SystemColors.ControlText;
-        _statusLabel.Text = "Enviando...";
+        _settings.LightOn = on;
+        PostState();
+        QueueApply();
+    }
 
-        try
-        {
-            // Abre, envia e fecha a cada comando: não segura o dispositivo
-            // e se recupera sozinho se o cabo ou o dongle for reconectado.
-            await Task.Run(() =>
-            {
-                using var link = OpenLink();
-                action(new KeyboardClient(link));
-            });
+    private void ShowFromTray()
+    {
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
+    }
 
-            onSuccess();
-            _statusLabel.ForeColor = Color.ForestGreen;
-            _statusLabel.Text = _simulateCheck.Checked
-                ? "Simulado. Veja os bytes abaixo."
-                : successText?.Invoke() ?? "Aplicado.";
-        }
-        catch (Exception ex) when (ex is KeyboardException or System.ComponentModel.Win32Exception)
+    /// <summary>Chamado quando alguém tenta abrir uma segunda instância.</summary>
+    public void ActivateFromAnotherInstance()
+    {
+        if (InvokeRequired)
         {
-            _statusLabel.ForeColor = Color.Firebrick;
-            _statusLabel.Text = ex.Message;
+            BeginInvoke(ActivateFromAnotherInstance);
+            return;
         }
-        finally
-        {
-            foreach (var b in buttons) b.Enabled = true;
-        }
+        ShowFromTray();
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            SystemEvents.UserPreferenceChanged -= OnThemeChanged;
+            _deviceTimer.Dispose();
+            _keyboardLock.Dispose();
             _trayIcon.Dispose();
+            _web.Dispose();
         }
         base.Dispose(disposing);
     }
