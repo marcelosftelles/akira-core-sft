@@ -102,6 +102,10 @@ Iluminação: `05 10 00` + bloco. Cores por LED: 21 reports `14 <tam> <pedaço>`
 Funcionando em hardware: efeitos das teclas pelo cabo e pelo dongle, cor, brilho, velocidade,
 desligar, bandeja, configuração salva.
 
+Ainda não testado em hardware/Windows real: a interface WebView2 e o instalador (o instalador
+passou numa matriz de regressão no Wine: instalar, atualizar e desinstalar com o app aberto
+simulado, arquivo travado, entrada de inicialização; o app .NET em si não roda no Wine).
+
 **Em investigação: fitas dos cantos (esquerdo e direito) e mini fita perto do knob.**
 O usuário as controla por atalho do teclado; o software oficial não suporta.
 Detalhes, evidências e roteiro de testes em `docs/investigacao-fitas.md`.

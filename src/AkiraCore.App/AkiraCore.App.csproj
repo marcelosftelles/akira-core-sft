@@ -31,6 +31,8 @@
     <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
     <!-- Só uma cópia do WebView2Loader.dll na publicação, sem a pasta runtimes\ duplicada -->
     <WebView2NeverCopyLoaderDllToOutputDirectory>true</WebView2NeverCopyLoaderDllToOutputDirectory>
+    <!-- Sem os .xml de documentação do WebView2 ao lado do .exe publicado -->
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
   </PropertyGroup>
 
   <ItemGroup>

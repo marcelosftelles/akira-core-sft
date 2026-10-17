@@ -15,6 +15,11 @@ setup="$root/dist/AkiraCore-Setup-$version.exe"
 bootstrapper_url="https://go.microsoft.com/fwlink/p/?LinkId=2124703"
 
 fail() { echo "Erro: $*" >&2; exit 1; }
+# No Git Bash o makensis é o do Windows: caminhos /c/... dentro de arquivos e nos -D que
+# apontam para arquivos precisam virar C:\... (o MSYS só converte argumentos, nunca conteúdo)
+native_path() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
 
 [[ -n "$version" ]] || fail "não achei <Version> em $project"
 # Windows só aceita 4 números nos metadados: 1.2.3-beta.1 vira 1.2.3.0
@@ -50,8 +55,7 @@ dotnet test "$root/tests/AkiraCore.Core.Tests" -c Release --nologo -v quiet
 echo "==> Publicando AkiraCore $version (win-x64, autossuficiente: não precisa de .NET instalado)"
 rm -rf "$publish"
 dotnet publish "$project" -c Release -r win-x64 --self-contained --nologo -v quiet \
-  -p:PublishSingleFile=true -p:DebugType=none -p:PublishReferencesDocumentationFiles=false \
-  -o "$publish"
+  -p:PublishSingleFile=true -p:DebugType=none -o "$publish"
 
 # Lista exata do que o instalador coloca e do que o desinstalador tira
 echo "==> Gerando a lista de arquivos"
@@ -67,7 +71,7 @@ nsis_escape() { printf '%s' "${1//\$/\$\$}"; }
       if [[ "$dir" == "." ]]; then echo "  SetOutPath \"\$INSTDIR\""; else echo "  SetOutPath \"\$INSTDIR\\${dir//\//\\}\""; fi
       current_dir="$dir"
     fi
-    echo "  File \"$(nsis_escape "$publish/$rel")\""
+    echo "  File \"$(nsis_escape "$(native_path "$publish/$rel")")\""
   done < <(cd "$publish" && find . -type f | sed 's:^\./::' | LC_ALL=C sort)
   echo "!macroend"
   echo "!macro UNINSTALL_APP_FILES"
@@ -98,7 +102,7 @@ if [[ ! -e "$bootstrapper" ]]; then
 fi
 nsis_defines=()
 if [[ -e "$bootstrapper" ]]; then
-  nsis_defines+=("-DWEBVIEW2_BOOTSTRAPPER=$bootstrapper")
+  nsis_defines+=("-DWEBVIEW2_BOOTSTRAPPER=$(native_path "$bootstrapper")")
   webview2_note="com o bootstrapper do WebView2"
 elif [[ -n "${REQUIRE_WEBVIEW2_BOOTSTRAPPER:-}" ]]; then
   fail "não consegui baixar o bootstrapper do WebView2 de $bootstrapper_url"
@@ -110,10 +114,10 @@ fi
 echo "==> Montando o instalador"
 mkdir -p "$(dirname "$setup")"
 "$makensis_bin" -V2 -INPUTCHARSET UTF8 \
-  "-DVERSION=$version" "-DVI_VERSION=$vi_version" "-DFILES_NSH=$files_nsh" "-DOUT_FILE=$setup" \
-  ${nsis_defines[@]+"${nsis_defines[@]}"} \
-  "$root/installer/AkiraCore.nsi"
+  "-DVERSION=$version" "-DVI_VERSION=$vi_version" "-DFILES_NSH=$(native_path "$files_nsh")" \
+  "-DOUT_FILE=$(native_path "$setup")" ${nsis_defines[@]+"${nsis_defines[@]}"} \
+  "$(native_path "$root/installer/AkiraCore.nsi")"
 
-echo "==> Pronto ($webview2_note): $setup"
 ls -l "$setup"
 if command -v sha256sum >/dev/null; then sha256sum "$setup"; fi
+echo "==> Pronto ($webview2_note): $setup"

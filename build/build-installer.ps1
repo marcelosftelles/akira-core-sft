@@ -34,7 +34,7 @@ if ($LASTEXITCODE) { throw 'Testes falharam' }
 Write-Host "==> Publicando AkiraCore $version (win-x64, autossuficiente: não precisa de .NET instalado)"
 if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
 dotnet publish $project -c Release -r win-x64 --self-contained --nologo -v quiet `
-    -p:PublishSingleFile=true -p:DebugType=none -p:PublishReferencesDocumentationFiles=false -o $publish
+    -p:PublishSingleFile=true -p:DebugType=none -o $publish
 if ($LASTEXITCODE) { throw 'Publicação falhou' }
 
 # Lista exata do que o instalador coloca e do que o desinstalador tira
@@ -95,5 +95,5 @@ New-Item -ItemType Directory -Force (Split-Path $setup) | Out-Null
 & $makensis -V2 -INPUTCHARSET UTF8 @defines (Join-Path $root 'installer\AkiraCore.nsi')
 if ($LASTEXITCODE) { throw 'makensis falhou' }
 
-Write-Host "==> Pronto ($webview2Note): $setup"
 Get-FileHash $setup -Algorithm SHA256 | Format-List
+Write-Host "==> Pronto ($webview2Note): $setup"

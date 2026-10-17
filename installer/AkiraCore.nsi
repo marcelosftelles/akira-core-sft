@@ -68,10 +68,11 @@ Var PreviousDir
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir o ${APP_NAME} agora"
 
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_COMPONENTS
-; Atualização: mantém a pasta atual (trocar de pasta deixaria a cópia antiga para trás)
+; Atualização: mantém a pasta atual (trocar de pasta deixaria a cópia antiga para trás).
+; A pasta vem antes dos componentes para o botão "Instalar" ficar sempre na página certa.
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipDirectoryOnUpgrade
 !insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -114,9 +115,16 @@ Function ${PREFIX}CloseRunningApp
       Return
     ${Else}
       ; GENERIC_WRITE sem compartilhamento: só abre quando nenhum processo usa o .exe
-      System::Call 'kernel32::CreateFileW(w "$INSTDIR\${APP_EXE}", i 0x40000000, i 0, p 0, i 3, i 0x80, p 0) p .r3'
+      System::Call 'kernel32::CreateFileW(w "$INSTDIR\${APP_EXE}", i 0x40000000, i 0, p 0, i 3, i 0x80, p 0) p .r3 ?e'
+      Pop $4
       ${If} $3 P<> -1
         System::Call 'kernel32::CloseHandle(p r3)'
+        Return
+      ${EndIf}
+      ; Só vale esperar por arquivo em uso (32 = compartilhamento, 33 = trava). Outro erro,
+      ; como somente leitura ou permissão, não é o app aberto: File/Delete mostram o motivo real.
+      ${If} $4 <> 32
+      ${AndIf} $4 <> 33
         Return
       ${EndIf}
     ${EndIf}
@@ -261,9 +269,12 @@ Section "Uninstall"
   ; Só os arquivos que o instalador colocou. Se o .exe resistir, nada mais é removido:
   ; apagar o registro antes deixaria uma instalação órfã, sem como desinstalar.
   retry_delete:
+  ; Delete marca erro quando um arquivo existe e não sai (arquivo ausente não conta)
+  ClearErrors
   !insertmacro UNINSTALL_APP_FILES
-  ${If} ${FileExists} "$INSTDIR\${APP_EXE}"
-    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Não deu para apagar o ${APP_EXE}. Feche o ${APP_NAME} pela bandeja (botão direito no ícone, Sair) e clique em Repetir." /SD IDCANCEL IDRETRY retry_delete
+  ${If} ${Errors}
+  ${OrIf} ${FileExists} "$INSTDIR\${APP_EXE}"
+    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Não deu para apagar os arquivos do ${APP_NAME}. Feche o ${APP_NAME} pela bandeja (botão direito no ícone, Sair) e clique em Repetir." /SD IDCANCEL IDRETRY retry_delete
     Abort
   ${EndIf}
   Delete "$INSTDIR\${UNINSTALL_EXE}"

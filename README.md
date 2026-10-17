@@ -12,7 +12,7 @@ o teclado ao soltar o controle. Tema claro e escuro seguem o Windows.
 
 A tela é HTML/CSS/JS (`src/AkiraCore.App/Ui`) dentro de um WebView2, embutida no executável e
 servida em `https://akira.ui` sem tocar na rede. Precisa do
-[Microsoft Edge WebView2 Runtime](https://go.microsoft.com/fwlink/p/?LinkId=2124703), que já vem no
+[Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/consumer/), que já vem no
 Windows 11 e no Windows 10 atualizado; sem ele o app avisa e a bandeja continua funcionando.
 
 Para revisar o visual sem Windows: sirva a pasta `Ui` (`python -m http.server` dentro dela) e abra
@@ -100,8 +100,8 @@ Baixe `AkiraCore-Setup-<versão>.exe` em Releases (ou gere com o script abaixo) 
 - Se o Microsoft Edge WebView2 Runtime faltar, o instalador o instala quando foi gerado com o
   bootstrapper (os Releases sempre têm); senão, oferece abrir a
   [página do WebView2](https://developer.microsoft.com/microsoft-edge/webview2/consumer/).
-- Desinstalar: Configurações › Aplicativos › Aplicativos instalados › AkiraCore. As configurações
-  salvas só são apagadas se você confirmar.
+- Desinstalar: Configurações › Aplicativos › Aplicativos instalados (no Windows 10: Aplicativos
+  e recursos) › AkiraCore. As configurações salvas só são apagadas se você confirmar.
 
 O instalador não é assinado digitalmente:
 
@@ -127,7 +127,8 @@ powershell -ExecutionPolicy Bypass -File build\build-installer.ps1   # Windows (
 O script roda os testes, publica o app para win-x64 de forma autossuficiente (não precisa de .NET
 instalado no PC; o `AkiraCore.exe` vai com as DLLs nativas ao lado), tenta baixar o bootstrapper
 do WebView2 e gera `dist/AkiraCore-Setup-<versão>.exe`. Sem internet para a Microsoft, o
-instalador sai sem o bootstrapper e a última linha do script diz isso. A versão vem do
+instalador sai sem o bootstrapper, e a linha final `==> Pronto (SEM o bootstrapper do WebView2)`
+avisa. A versão vem do
 `<Version>` do `src/AkiraCore.App/AkiraCore.App.csproj`.
 
 Para publicar uma versão: suba o `<Version>`, faça commit e crie a tag igual (`git tag v1.0.1`,
