@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Permite compilar fora do Windows (CI em Linux); só executa no Windows -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>AkiraCore</AssemblyName>
+    <RootNamespace>AkiraCore.App</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AkiraCore.Core\AkiraCore.Core.csproj" />
+  </ItemGroup>
+
+</Project>
