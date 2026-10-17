@@ -7,22 +7,33 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Só leitura por padrão: o build roda código de pacotes NuGet e não precisa escrever nada
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   installer:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@v4
+        id: dotnet
         with:
           dotnet-version: '8.0.x'
+
+      # O runner tem SDKs mais novos; sem fixar, o dotnet usaria o mais recente
+      - name: Fixar o SDK 8
+        run: |
+          echo '{"sdk":{"version":"${{ steps.dotnet.outputs.dotnet-version }}"}}' > global.json
+          dotnet --version
 
       - name: Instalar o NSIS
         run: sudo apt-get update && sudo apt-get install -y nsis
 
+      # Em tag, o script exige o bootstrapper do WebView2 dentro do instalador
       - name: Testar, publicar e montar o instalador
         run: bash build/build-installer.sh
 
@@ -32,9 +43,18 @@ jobs:
           path: dist/*.exe
           if-no-files-found: error
 
-      - name: Publicar o Release
-        if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+  release:
+    if: github.ref_type == 'tag'
+    needs: installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          files: dist/*.exe
+          name: AkiraCore-Setup
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: '*.exe'
           generate_release_notes: true

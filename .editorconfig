@@ -1,0 +1,12 @@
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+
+[*.sh]
+end_of_line = lf
+
+[*.ps1]
+# Windows PowerShell 5.1 lê arquivo sem BOM como ANSI e estraga os acentos
+charset = utf-8-bom

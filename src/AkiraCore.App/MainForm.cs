@@ -21,7 +21,8 @@ namespace AkiraCore.App;
 public sealed class MainForm : Form
 {
     private const int WmDeviceChange = 0x0219;
-    private const string RuntimeDownloadUrl = "https://go.microsoft.com/fwlink/p/?LinkId=2124703";
+    // Página para o usuário final: a licença do WebView2 não permite repassar o link direto do instalador
+    private const string RuntimePageUrl = "https://developer.microsoft.com/microsoft-edge/webview2/consumer/";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -41,6 +42,8 @@ public sealed class MainForm : Form
     private bool _dirty;
     private bool _exiting;
     private LabForm? _labForm;
+    private readonly object _exitLock = new();
+    private bool _exitPending;
 
     public MainForm(bool startHidden)
     {
@@ -76,6 +79,15 @@ public sealed class MainForm : Form
     {
         base.OnHandleCreated(e);
         WindowChrome.Apply(Handle, WindowChrome.IsDarkTheme());
+        lock (_exitLock)
+        {
+            // O instalador pediu para sair antes de a janela existir
+            if (_exitPending)
+            {
+                _exitPending = false;
+                BeginInvoke(ExitNow);
+            }
+        }
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -166,6 +178,9 @@ public sealed class MainForm : Form
         settings.IsZoomControlEnabled = false;
         settings.IsGeneralAutofillEnabled = false;
         settings.IsPasswordAutosaveEnabled = false;
+        // A página é só conteúdo local embutido (https://akira.ui): checar reputação no SmartScreen
+        // não protege nada, e desligar dispensa o aviso de coleta de dados que a licença exigiria
+        settings.IsReputationCheckingRequired = false;
 
         core.AddWebResourceRequestedFilter(EmbeddedUi.Origin + "/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += (_, e) =>
@@ -200,8 +215,8 @@ public sealed class MainForm : Form
             AutoSize = true, MaximumSize = new Size(560, 0), Font = new Font("Segoe UI", 11f),
             Text = reason + " Enquanto isso, a bandeja continua funcionando.",
         });
-        var link = new LinkLabel { AutoSize = true, Text = "Baixar o WebView2 Runtime", Margin = new Padding(0, 16, 0, 0) };
-        link.LinkClicked += (_, _) => Process.Start(new ProcessStartInfo(RuntimeDownloadUrl) { UseShellExecute = true });
+        var link = new LinkLabel { AutoSize = true, Text = "Abrir a página do WebView2 Runtime", Margin = new Padding(0, 16, 0, 0) };
+        link.LinkClicked += (_, _) => Process.Start(new ProcessStartInfo(RuntimePageUrl) { UseShellExecute = true });
         panel.Controls.Add(link);
         Controls.Add(panel);
     }
@@ -544,27 +559,54 @@ public sealed class MainForm : Form
         Activate();
     }
 
-    /// <summary>Chamado pelo instalador (evento AkiraCore.Exit): sai de verdade, sem ir para a bandeja.</summary>
+    /// <summary>
+    /// Chamado pelo instalador (evento AkiraCore.Exit), numa thread do pool: sai de verdade,
+    /// sem ir para a bandeja. Close só roda pelo laço de mensagens; se a janela ainda não
+    /// existe, o pedido fica guardado e o OnHandleCreated o executa.
+    /// </summary>
     public void ExitFromInstaller()
     {
-        if (InvokeRequired)
+        lock (_exitLock)
         {
-            BeginInvoke(ExitFromInstaller);
-            return;
+            if (IsDisposed)
+            {
+                return;
+            }
+            if (!IsHandleCreated)
+            {
+                _exitPending = true;
+                return;
+            }
         }
+        PostToUi(ExitNow);
+    }
+
+    private void ExitNow()
+    {
         _exiting = true;
         Close();
     }
 
-    /// <summary>Chamado quando alguém tenta abrir uma segunda instância.</summary>
+    /// <summary>Chamado quando alguém tenta abrir uma segunda instância (thread do pool).</summary>
     public void ActivateFromAnotherInstance()
     {
-        if (InvokeRequired)
+        if (IsHandleCreated)
         {
-            BeginInvoke(ActivateFromAnotherInstance);
-            return;
+            PostToUi(ShowFromTray);
         }
-        ShowFromTray();
+    }
+
+    /// <summary>BeginInvoke que tolera a janela sendo destruída no meio do caminho.</summary>
+    private void PostToUi(Action action)
+    {
+        try
+        {
+            BeginInvoke(action);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            // Janela já fechando: não há o que fazer
+        }
     }
 
     protected override void Dispose(bool disposing)

@@ -24,8 +24,13 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- O WebView2Loader.dll nativo vai dentro do .exe quando publicado como arquivo único -->
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Publicação para o instalador: as DLLs nativas (WebView2Loader e as do WPF que vêm no
+         runtime) ficam ao lado do .exe. Embutidas, o .NET as extrairia no %TEMP% a cada versão,
+         o que antivírus e limpadores de temp atrapalham. A versão portátil liga isto de volta
+         na linha de comando (ver README). -->
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <!-- Só uma cópia do WebView2Loader.dll na publicação, sem a pasta runtimes\ duplicada -->
+    <WebView2NeverCopyLoaderDllToOutputDirectory>true</WebView2NeverCopyLoaderDllToOutputDirectory>
   </PropertyGroup>
 
   <ItemGroup>

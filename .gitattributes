@@ -1,0 +1,5 @@
+# Scripts de shell precisam de LF mesmo num clone do Windows (senão o bash para no "set -o pipefail")
+*.sh text eol=lf
+# Binários
+*.ico binary
+*.png binary

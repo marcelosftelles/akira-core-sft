@@ -17,6 +17,15 @@ public static class StartupCommand
     }
 
     /// <summary>
+    /// O usuário desligou a entrada no Gerenciador de Tarefas ou em Configurações › Inicialização?
+    /// O Windows não apaga o valor do Run: grava um binário em
+    /// HKCU\...\Explorer\StartupApproved\Run com o primeiro byte ímpar (03 = desabilitado,
+    /// 02 = habilitado). Ausente conta como habilitado.
+    /// </summary>
+    public static bool IsDisabledByUser(byte[]? startupApprovedValue) =>
+        startupApprovedValue is { Length: > 0 } value && (value[0] & 1) == 1;
+
+    /// <summary>
     /// O valor gravado abre este mesmo executável? Uma entrada de outra cópia (pasta antiga,
     /// versão portátil) conta como desligada, e religar regrava apontando para cá.
     /// </summary>

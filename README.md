@@ -94,38 +94,50 @@ Feche o app oficial pela bandeja antes de usar. Em Ajustes, "Simular envio" most
 Baixe `AkiraCore-Setup-<versão>.exe` em Releases (ou gere com o script abaixo) e execute.
 
 - Instala só para o seu usuário, em `%LocalAppData%\Programs\AkiraCore`, sem pedir administrador.
+  Numa atualização, fecha o AkiraCore aberto e mantém a mesma pasta.
 - Opções: atalho na área de trabalho e "Iniciar com o Windows, escondido na bandeja" (dá para
   mudar depois em Ajustes › Iniciar com o Windows).
-- Se o Microsoft Edge WebView2 Runtime faltar, o instalador instala (quando o pacote traz o
-  bootstrapper) ou abre a página de download.
-- Desinstalar: Configurações do Windows › Apps › AkiraCore. As configurações salvas só são
-  apagadas se você confirmar.
+- Se o Microsoft Edge WebView2 Runtime faltar, o instalador o instala quando foi gerado com o
+  bootstrapper (os Releases sempre têm); senão, oferece abrir a
+  [página do WebView2](https://developer.microsoft.com/microsoft-edge/webview2/consumer/).
+- Desinstalar: Configurações › Aplicativos › Aplicativos instalados › AkiraCore. As configurações
+  salvas só são apagadas se você confirmar.
 
-O instalador não é assinado digitalmente, então o Windows SmartScreen pode avisar
-"O Windows protegeu o computador". Clique em **Mais informações › Executar assim mesmo**.
+O instalador não é assinado digitalmente:
+
+- O navegador pode avisar que o arquivo é pouco baixado; escolha **Manter**.
+- O SmartScreen pode mostrar "O Windows protegeu o computador": clique em **Mais informações ›
+  Executar assim mesmo**.
+- Se o bloqueio vier do **Controle Inteligente de Aplicativos** (Windows 11), não há botão para
+  continuar: só dá para usar desligando o recurso em Segurança do Windows › Controle de
+  aplicativos e navegador. Resolver isso de vez exige assinatura de código (o Azure Artifact
+  Signing ainda não aceita pessoa física no Brasil).
 
 ## Gerar o instalador
 
-Precisa do .NET 8 SDK e do NSIS 3.
+Precisa do .NET 8 SDK da Microsoft e do NSIS 3. No Linux/WSL use o SDK da Microsoft
+(`dotnet-install.sh` ou packages.microsoft.com): o `dotnet-sdk-8.0` empacotado pelo Ubuntu não
+traz os alvos de WinForms, e o script avisa.
 
 ```
 bash build/build-installer.sh                                       # Linux, macOS, WSL, Git Bash
 powershell -ExecutionPolicy Bypass -File build\build-installer.ps1   # Windows (winget install NSIS.NSIS)
 ```
 
-O script roda os testes, publica o app para win-x64 como arquivo único autossuficiente (não
-precisa de .NET instalado no PC), baixa o bootstrapper do WebView2 e gera
-`dist/AkiraCore-Setup-<versão>.exe`. A versão vem do `<Version>` do
-`src/AkiraCore.App/AkiraCore.App.csproj`.
+O script roda os testes, publica o app para win-x64 de forma autossuficiente (não precisa de .NET
+instalado no PC; o `AkiraCore.exe` vai com as DLLs nativas ao lado), tenta baixar o bootstrapper
+do WebView2 e gera `dist/AkiraCore-Setup-<versão>.exe`. Sem internet para a Microsoft, o
+instalador sai sem o bootstrapper e a última linha do script diz isso. A versão vem do
+`<Version>` do `src/AkiraCore.App/AkiraCore.App.csproj`.
 
 Para publicar uma versão: suba o `<Version>`, faça commit e crie a tag igual (`git tag v1.0.1`,
-`git push origin v1.0.1`). O workflow `.github/workflows/installer.yml` gera o instalador e cria
-o Release.
+`git push origin v1.0.1`). O workflow `.github/workflows/installer.yml` gera o instalador, exige o
+bootstrapper do WebView2 e cria o Release.
 
-Versão portátil, sem instalador (um único .exe para rodar de qualquer pasta):
+Versão portátil, sem instalador (um único .exe, roda de qualquer pasta):
 
 ```
-dotnet publish src/AkiraCore.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+dotnet publish src/AkiraCore.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o dist/portatil
 ```
 
 Para iniciar escondido na bandeja: `AkiraCore.exe --hidden`.

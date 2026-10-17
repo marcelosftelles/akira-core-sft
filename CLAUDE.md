@@ -36,12 +36,23 @@ bash build/build-installer.sh                # gera dist/AkiraCore-Setup-<versã
 ```
 
 Instalador: `installer/AkiraCore.nsi` (NSIS 3, por usuário em `%LocalAppData%\Programs\AkiraCore`,
-sem admin, pt-BR). Publicação win-x64 autossuficiente em arquivo único; o NSIS comprime (LZMA).
-Versão única no `<Version>` do `AkiraCore.App.csproj`; tag `vX.Y.Z` igual dispara
-`.github/workflows/installer.yml`, que cria o Release. Nomes compartilhados entre app e instalador
-(não mudar só de um lado): mutex `AkiraCore.SingleInstance`, evento `AkiraCore.Exit` (o instalador
-pede para o app sair antes de trocar o .exe), valor `AkiraCore` em `HKCU\...\Run` com `--hidden`
-(`StartupCommand`). Ícone: `src/AkiraCore.App/Assets/akira.svg` → `node build/icon/build-icon.cjs`.
+sem admin, pt-BR, `AllowSkipFiles off`). Publicação win-x64 autossuficiente em arquivo único com as
+DLLs nativas ao lado do .exe (`IncludeNativeLibrariesForSelfExtract=false`: nada é extraído no
+%TEMP%); o build gera `artifacts/installer-files.nsh` com a lista exata de File/Delete. O NSIS
+comprime (LZMA); não ligar `EnableCompressionInSingleFile` no instalador.
+Versão única no `<Version>` do `AkiraCore.App.csproj` (o build deriva a x.y.z.w dos metadados);
+tag `vX.Y.Z` igual dispara `.github/workflows/installer.yml`, que exige o bootstrapper do WebView2
+e cria o Release. Builds feitos nesta nuvem não conseguem baixar o bootstrapper (proxy bloqueia a
+Microsoft): para distribuir, use o Release do CI.
+Nomes compartilhados entre app e instalador (não mudar só de um lado): mutex
+`AkiraCore.SingleInstance` (fica vivo até o fim do processo), evento `AkiraCore.Exit` (o
+instalador sinaliza e espera o .exe ficar gravável), valor `AkiraCore` em `HKCU\...\Run` com
+`--hidden` (`StartupCommand`) e o mesmo nome em `...\Explorer\StartupApproved\Run`.
+Ícone: `src/AkiraCore.App/Assets/akira.svg` → `node build/icon/build-icon.cjs`.
+Testar o instalador aqui: `apt-get install wine wine64 wine32:i386 xvfb` (com
+`dpkg --add-architecture i386`), prefixo novo com `WINEARCH=win64`, `Setup.exe /S` e
+`Uninstall.exe /S` + `wineserver -w`. O app .NET em si não roda no Wine (CoreCLR falha); para
+simular o app aberto, use um executável NSIS que cria o mutex e o evento.
 
 O teste em hardware é feito pelo usuário no Windows; o ambiente de nuvem só compila e roda testes.
 Para revisar a interface aqui: `python3 -m http.server` dentro de `src/AkiraCore.App/Ui` e
