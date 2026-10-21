@@ -1,6 +1,8 @@
 // Interface do AkiraCore. Fala com o C# por mensagens JSON (WebView2); toda regra de
 // protocolo fica no AkiraCore.Core. Aqui só há estado de tela e a prévia do teclado.
-import { VIEWBOX, BODY, KNOB, ZONES, KEYS } from "./layout.js";
+import { VIEWBOX, BODY, KNOB, ZONES, KEYS, SCAN_CODES } from "./layout.js";
+import { createKeyboardPages } from "./keys.js";
+import { createColorsPage } from "./colors.js";
 
 const host = window.chrome?.webview
   ? webViewHost(window.chrome.webview)
@@ -16,9 +18,12 @@ const state = {
   effects: [],
   lighting: { effect: "rolling", color: "#FF0000", brightness: 5, speed: 3, reverse: false, rainbow: true },
   lightOn: true,
-  options: { swapRedBlue: false, simulate: false },
-  device: { connected: false, channel: null, name: "" },
+  options: { swapRedBlue: false, simulate: false, startWithWindows: false, batteryAlert: true },
+  device: { connected: false, channel: null, name: "", battery: { level: null, cable: false } },
+  customActive: false, // um esquema de cores por tecla está no teclado no lugar do efeito
+  profiles: { list: [], activeId: null },
   view: "lighting",
+  loaded: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -41,7 +46,13 @@ host.onMessage((message) => {
       state.lightOn = message.lightOn;
       state.options = message.options;
       state.device = message.device;
+      state.profiles = message.profiles ?? state.profiles;
+      loadCustomLights(message.customLights);
+      // Ao abrir, a página certa é a do que está no teclado
+      if (!state.loaded && state.customActive) showView("colors");
+      state.loaded = true;
       renderAll();
+      if (message.keyboard) keyboardPages.load(message.keyboard);
       break;
     case "device":
       state.device = message.device;
@@ -53,8 +64,40 @@ host.onMessage((message) => {
     case "log":
       appendLog(message.title, message.lines);
       break;
+    case "key":
+      pressKey(message.scan, message.down);
+      break;
+    case "customLights":
+      loadCustomLights(message.customLights);
+      renderSelection();
+      break;
+    case "profiles":
+      state.profiles = message.profiles;
+      renderProfiles();
+      break;
+    case "macroText": {
+      keyboardPages.appendEvents(message.events);
+      const where = `no layout ${message.layout}`;
+      if (message.skipped) showStatus("error", `Ficaram de fora (${where}): ${message.skipped}`);
+      else showStatus("ok", `Texto inserido, ${where}`);
+      break;
+    }
+    case "macrosImported": {
+      const added = keyboardPages.importMacros(message.macros);
+      showStatus(added === message.macros.length ? "ok" : "error",
+        added === message.macros.length
+          ? `${added} macro${added === 1 ? "" : "s"} importada${added === 1 ? "" : "s"}. Grave no teclado para usar`
+          : `Só ${added} de ${message.macros.length} macros cabem na lista`);
+      break;
+    }
   }
 });
+
+function loadCustomLights(customLights) {
+  if (!customLights) return;
+  state.customActive = Boolean(customLights.activeId);
+  colorsPage.load(customLights);
+}
 
 let applyTimer;
 function applySoon(delay = 180) {
@@ -90,7 +133,8 @@ function revealChosenEffect() {
 
 function renderSelection() {
   for (const button of effectsList.querySelectorAll(".nav-item")) {
-    const chosen = button.dataset.key === state.lighting.effect;
+    // Com cores por tecla no teclado, nenhum efeito está em uso
+    const chosen = button.dataset.key === state.lighting.effect && !state.customActive;
     button.setAttribute("aria-selected", String(chosen && state.view === "lighting"));
     button.dataset.inactive = String(chosen && state.view !== "lighting");
     button.tabIndex = chosen ? 0 : -1;
@@ -114,6 +158,8 @@ effectsList.addEventListener("keydown", (e) => {
 function chooseEffect(key) {
   state.lighting.effect = key;
   state.lightOn = true;
+  state.customActive = false;
+  colorsPage.deactivate();
   showView("lighting");
   renderLighting();
   revealChosenEffect();
@@ -124,7 +170,21 @@ for (const button of document.querySelectorAll(".nav-bottom .nav-item")) {
   button.addEventListener("click", () => showView(button.dataset.view));
 }
 
+// Teclas, Macros e o grupo Teclado de Ajustes ficam em keys.js
+const keyboardPages = createKeyboardPages(host);
+keyboardPages.onNavigate(showView);
+
+// Cores por tecla fica em colors.js; usar um esquema liga a luz e tira o efeito da seleção
+const colorsPage = createColorsPage(host, {
+  onActivate(id) {
+    state.customActive = Boolean(id);
+    if (id) state.lightOn = true;
+    renderLighting();
+  },
+});
+
 function showView(view) {
+  if (view !== state.view) keyboardPages.leave();
   state.view = view;
   for (const section of document.querySelectorAll(".view")) {
     section.hidden = section.id !== `view-${view}`;
@@ -146,6 +206,40 @@ function renderDevice() {
   }
   device.dataset.state = mode;
   $("device-text").textContent = text;
+  $("brand-board").dataset.connected = String(connected || state.options.simulate);
+  renderBattery();
+}
+
+// O nível vem do dongle (o mesmo pedido do app oficial); carregando = cabo ligado no PC
+function renderBattery() {
+  const battery = $("battery");
+  const { level = null, cable = false } = state.device.battery ?? {};
+  const known = Number.isInteger(level);
+  battery.hidden = state.options.simulate || (!known && !cable);
+  if (battery.hidden) {
+    return;
+  }
+  // Só o ícone e o número; o texto completo fica no tooltip e para leitores de tela
+  battery.style.setProperty("--level", known ? `${level}%` : "0%");
+  battery.toggleAttribute("data-charging", cable);
+  battery.dataset.level = !known ? "unknown" : level > 70 ? "high" : level > 20 ? "mid" : "low";
+  $("battery-text").textContent = known ? `${level}%` : "";
+  const full = known ? `Bateria ${level}%${cable ? ", carregando" : ""}` : "Bateria carregando";
+  battery.setAttribute("aria-label", full);
+  battery.title = known ? full : `${full}. O nível só é informado pelo dongle 2.4G`;
+}
+
+// Teclado da barra lateral: só o contorno das teclas, do mesmo layout da prévia
+function buildBrandBoard() {
+  const root = el("svg", {
+    viewBox: `${BODY.x - 2} ${BODY.y - 2} ${BODY.width + 4} ${BODY.height + 4}`,
+    role: "presentation",
+  });
+  el("rect", { class: "outline", x: BODY.x, y: BODY.y, width: BODY.width, height: BODY.height, rx: BODY.radius }, root);
+  const keys = el("g", { class: "keys" }, root);
+  for (const k of KEYS) el("rect", { x: k.x + 2, y: k.y + 2, width: k.w - 4, height: k.h - 4, rx: 4 }, keys);
+  el("circle", { class: "keys", cx: KNOB.cx, cy: KNOB.cy, r: KNOB.r - 2 }, root);
+  $("brand-board").append(root);
 }
 
 // --- Iluminação ------------------------------------------------------------------
@@ -221,11 +315,11 @@ function renderLighting() {
   if (!effect) return;
   const { lighting } = state;
   $("effect-title").textContent = state.lightOn ? effect.label : "Luz desligada";
-  $("light-on").checked = state.lightOn;
+  document.querySelectorAll(".light-switch").forEach((input) => { input.checked = state.lightOn; });
   $("rainbow").checked = lighting.rainbow;
   renderRange($("brightness"), lighting.brightness);
   renderRange($("speed"), lighting.speed);
-  for (const button of document.querySelectorAll(".segmented button")) {
+  for (const button of document.querySelectorAll("#view-lighting .segmented button")) {
     button.setAttribute("aria-checked", String(button.dataset.reverse === String(lighting.reverse)));
   }
   renderSwatches();
@@ -240,11 +334,14 @@ function renderLighting() {
   paintBoards();
 }
 
-$("light-on").addEventListener("change", (e) => {
-  state.lightOn = e.target.checked;
-  renderLighting();
-  host.post({ type: "setLight", on: state.lightOn, lighting: { ...state.lighting } });
-});
+// Uma chave de luz em cada página de iluminação; o app reaplica o que estiver em uso
+for (const input of document.querySelectorAll(".light-switch")) {
+  input.addEventListener("change", (e) => {
+    state.lightOn = e.target.checked;
+    renderLighting();
+    host.post({ type: "setLight", on: state.lightOn, lighting: { ...state.lighting } });
+  });
+}
 
 $("rainbow").addEventListener("change", (e) => {
   state.lighting.rainbow = e.target.checked;
@@ -259,7 +356,7 @@ for (const id of ["brightness", "speed"]) {
   input.addEventListener("change", () => applySoon());
 }
 
-for (const button of document.querySelectorAll(".segmented button")) {
+for (const button of document.querySelectorAll("#view-lighting .segmented button")) {
   button.addEventListener("click", () => {
     state.lighting.reverse = button.dataset.reverse === "true";
     renderLighting();
@@ -272,11 +369,16 @@ for (const button of document.querySelectorAll(".segmented button")) {
 function renderSettings() {
   $("swap").checked = state.options.swapRedBlue;
   $("simulate").checked = state.options.simulate;
+  $("autostart").checked = state.options.startWithWindows;
+  $("battery-alert").checked = state.options.batteryAlert;
+  renderProfiles();
 }
 
-for (const key of ["swap", "simulate"]) {
-  $(key).addEventListener("change", (e) => {
-    const option = key === "swap" ? "swapRedBlue" : "simulate";
+const OPTION_KEYS = {
+  swap: "swapRedBlue", simulate: "simulate", autostart: "startWithWindows", "battery-alert": "batteryAlert",
+};
+for (const [id, option] of Object.entries(OPTION_KEYS)) {
+  $(id).addEventListener("change", (e) => {
     state.options[option] = e.target.checked;
     renderDevice();
     host.post({ type: "setOption", key: option, value: e.target.checked });
@@ -286,18 +388,111 @@ for (const key of ["swap", "simulate"]) {
 $("diagnose").addEventListener("click", () => host.post({ type: "diagnose" }));
 $("open-lab").addEventListener("click", () => host.post({ type: "openLab" }));
 
+// Alerta de confirmação: um só diálogo, com título, texto e ação de cada pedido
 const confirmDialog = $("confirm");
-$("reset").addEventListener("click", () => {
-  $("confirm-text").textContent = state.device.channel === "dongle"
-    ? "Pelo dongle, o teclado recebe o mesmo reset do app oficial: teclas remapeadas, macros e " +
-      "iluminação guardadas nele voltam ao padrão."
-    : "Pelo cabo, o app oficial não tem comando de reset: só a iluminação volta ao padrão " +
-      "(Rolando, arco-íris, brilho 5, velocidade 3). As fitas continuam nos atalhos.";
+let confirmed = null;
+function confirmAction({ title, text, action, onConfirm }) {
+  $("confirm-title").textContent = title;
+  $("confirm-text").textContent = text;
+  $("confirm-action").textContent = action;
+  confirmed = onConfirm;
+  confirmDialog.returnValue = "";
   confirmDialog.showModal();
-});
+}
 confirmDialog.addEventListener("close", () => {
-  if (confirmDialog.returnValue === "confirm") host.post({ type: "factoryReset" });
+  if (confirmDialog.returnValue === "confirm") confirmed?.();
+  confirmed = null;
 });
+
+$("reset").addEventListener("click", () => confirmAction({
+  title: "Restaurar o padrão de fábrica?",
+  text: state.device.channel === "dongle"
+    ? "Pelo dongle, o teclado recebe o mesmo reset do app oficial: teclas mudadas, macros, " +
+      "configurações e iluminação guardadas nele voltam ao padrão."
+    : "Pelo cabo, como no app oficial, o app regrava os padrões: teclas originais, nenhuma macro, " +
+      "configurações do teclado zeradas e iluminação Rolando. As fitas continuam nos atalhos.",
+  action: "Restaurar",
+  onConfirm: () => host.post({ type: "factoryReset" }),
+}));
+
+$("backup-export").addEventListener("click", () => host.post({ type: "exportBackup" }));
+$("backup-import").addEventListener("click", () => confirmAction({
+  title: "Importar um backup?",
+  text: "Iluminação, cores por tecla, teclas, macros, configurações e perfis do app são trocados " +
+    "pelos do arquivo, e o teclado é regravado. Exporte um backup antes se quiser voltar depois.",
+  action: "Escolher arquivo…",
+  onConfirm: () => host.post({ type: "importBackup" }),
+}));
+
+// --- Perfis ------------------------------------------------------------------------
+
+function renderProfiles() {
+  const { list, activeId } = state.profiles;
+  const select = $("profile-select");
+  select.replaceChildren(...list.map((p) => {
+    const option = document.createElement("option");
+    option.value = p.id;
+    option.textContent = p.name;
+    option.selected = p.id === activeId;
+    return option;
+  }));
+  select.closest(".profile-picker").hidden = list.length === 0;
+
+  $("profile-list").replaceChildren(...list.map((p) => {
+    const name = document.createElement("input");
+    name.type = "text";
+    name.className = "text";
+    name.maxLength = 40;
+    name.spellcheck = false;
+    name.value = p.name;
+    name.setAttribute("aria-label", `Nome do perfil ${p.name}`);
+    name.addEventListener("change", () => host.post({ type: "renameProfile", id: p.id, name: name.value }));
+    const actions = document.createElement("span");
+    actions.className = "inline";
+    if (p.id === activeId) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "Em uso";
+      actions.append(badge);
+    } else {
+      const use = button("Usar", () => host.post({ type: "switchProfile", id: p.id }));
+      const remove = button("Apagar", () => confirmAction({
+        title: `Apagar o perfil ${p.name}?`,
+        text: "As teclas, a iluminação e as configurações guardadas nele somem. Macros e esquemas de cores continuam.",
+        action: "Apagar",
+        onConfirm: () => host.post({ type: "deleteProfile", id: p.id }),
+      }));
+      remove.classList.add("destructive");
+      actions.append(use, remove);
+    }
+    const row = document.createElement("div");
+    row.className = "row";
+    row.append(name, actions);
+    return row;
+  }));
+  $("profile-new").disabled = list.length >= 20;
+}
+
+function button(text, onClick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "button";
+  b.textContent = text;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+$("profile-select").addEventListener("change", (e) => host.post({ type: "switchProfile", id: e.target.value }));
+$("profile-new").addEventListener("click", () => {
+  const name = $("profile-name").value.trim();
+  if (!name) {
+    $("profile-name").focus();
+    return;
+  }
+  $("profile-name").value = "";
+  host.post({ type: "createProfile", name });
+});
+$("profile-name").addEventListener("keydown", (e) => { if (e.key === "Enter") $("profile-new").click(); });
 
 // --- Status e log ------------------------------------------------------------------
 
@@ -418,15 +613,47 @@ function hexToRgb(hex) {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// Eventos aleatórios (teclas tocadas, explosões) para os efeitos reativos
-const events = { flashes: new Float32Array(KEYS.length).fill(-99), bursts: [], last: 0 };
+// Teclas tocadas para os efeitos reativos. As do AKIRA chegam do app (Raw Input) e
+// acendem a tecla certa na prévia; sem ninguém digitando, a prévia toca teclas sozinha.
+const DEMO_AFTER = 5000; // ms sem tecla real até voltar a demonstração
+const keyByScan = new Map(KEYS.map((k, i) => [SCAN_CODES[k.name], i]));
+const events = {
+  flashes: new Float32Array(KEYS.length).fill(-99),
+  bursts: [],
+  pressed: new Set(),
+  last: 0,
+  realAt: -Infinity,
+  ts: 0, // tempo do efeito no último quadro, para datar as teclas reais
+};
 
-function spawnEvents(ts) {
-  if (ts - events.last < 0.42) return;
+function addPress(i, ts) {
+  events.flashes[i] = ts;
+  const p = keyPoints[i];
+  events.bursts.push({ x: p.x, y: p.y, t: ts });
+  if (events.bursts.length > 12) events.bursts.shift();
+}
+
+function pressKey(scan, down) {
+  const i = keyByScan.get(scan);
+  if (i === undefined) return;
+  events.realAt = performance.now();
+  if (!down) {
+    events.pressed.delete(i);
+    return;
+  }
+  // Repetição automática do Windows não é um novo toque
+  if (events.pressed.has(i)) return;
+  events.pressed.add(i);
+  addPress(i, events.ts);
+}
+
+// Escondido, o app para de escutar: uma tecla solta nesse meio tempo ficaria presa
+document.addEventListener("visibilitychange", () => events.pressed.clear());
+
+function spawnEvents(ts, now) {
+  if (now - events.realAt < DEMO_AFTER || ts - events.last < 0.42) return;
   events.last = ts;
-  events.flashes[Math.floor(Math.random() * KEYS.length)] = ts;
-  events.bursts.push({ x: Math.random(), y: Math.random(), t: ts });
-  if (events.bursts.length > 6) events.bursts.shift();
+  addPress(Math.floor(Math.random() * KEYS.length), ts);
 }
 
 function rings(p, ts, width) {
@@ -453,7 +680,8 @@ const EFFECTS = {
     const d = Math.hypot((p.x - 0.5) * 2.4, p.y - 0.5);
     return [0.1 + 0.9 * band(d * 0.9 - ts * 0.45 * c.dir, 0.2), c.pick(d * 300 - ts * 60)];
   },
-  10: (p, ts, c) => [0.1 + 0.9 * band(p.x * c.dir - ts * 0.32, 0.16), c.pick(p.x * 360)],
+  // Rolagem é o único com o par de direções alternativo (config_func 0x08): vertical
+  10: (p, ts, c) => [0.1 + 0.9 * band(p.y * c.dir - ts * 0.32, 0.16), c.pick(p.y * 360)],
   11: (p, ts, c) => c.rainbow
     ? [1, hsl((p.x * c.dir - ts * 0.22) * 360)]
     : [0.18 + 0.82 * band(p.x * c.dir - ts * 0.3, 0.3), c.base],
@@ -477,13 +705,24 @@ const EFFECTS = {
 
 const startedAt = performance.now();
 let lastPaint = 0;
+// Tempo do efeito: acumulado quadro a quadro, para mudar a velocidade sem saltar a animação
+const clock = { ts: 0, at: startedAt };
+
+function effectTime(now, speed) {
+  if (reduceMotion.matches) return 1.2;
+  const dt = Math.min(0.1, Math.max(0, (now - clock.at) / 1000));
+  clock.at = now;
+  clock.ts += dt * (0.35 + (speed / 5) * 1.4);
+  return clock.ts;
+}
 
 function paintBoards(now = performance.now()) {
   const effect = currentEffect();
   if (!effect || boards.length === 0) return;
   const { lighting } = state;
-  const seconds = reduceMotion.matches ? 1.2 : (now - startedAt) / 1000;
-  const ts = seconds * (0.35 + (lighting.speed / 5) * 1.4);
+  const seconds = (now - startedAt) / 1000;
+  const ts = effectTime(now, lighting.speed);
+  events.ts = ts;
   const level = state.lightOn ? (lighting.brightness === 0 ? 0.1 : 0.3 + 0.7 * (lighting.brightness / 5)) : 0;
   const rainbow = !effect.color || (effect.rainbow && lighting.rainbow);
   const base = hexToRgb(lighting.color);
@@ -491,7 +730,7 @@ function paintBoards(now = performance.now()) {
   const run = EFFECTS[effect.mode] ?? EFFECTS[1];
   // Abertura: as teclas acendem da esquerda para a direita no primeiro segundo
   const sweep = reduceMotion.matches ? 1 : Math.min(1, seconds / 0.9);
-  spawnEvents(ts);
+  if (!reduceMotion.matches) spawnEvents(ts, now);
 
   for (let i = 0; i < KEYS.length; i++) {
     const p = keyPoints[i];
@@ -500,7 +739,9 @@ function paintBoards(now = performance.now()) {
     const intensity = Math.max(0, Math.min(1, raw)) * level * power;
     const color = `rgb(${rgb.map(Math.round).join(",")})`;
     const tint = 0.22 * intensity;
-    const cap = `rgb(${CAP.map((v, k) => Math.round(v + (rgb[k] - v) * tint)).join(",")})`;
+    // Tecla segurada no AKIRA fica um pouco mais escura, como se afundasse
+    const shade = events.pressed.has(i) ? 0.84 : 1;
+    const cap = `rgb(${CAP.map((v, k) => Math.round((v + (rgb[k] - v) * tint) * shade)).join(",")})`;
     for (const board of boards) {
       board.glows[i].setAttribute("fill", color);
       board.glows[i].setAttribute("opacity", board.lit ? intensity.toFixed(3) : "0");
@@ -529,6 +770,7 @@ function renderAll() {
 }
 
 buildSwatches();
+buildBrandBoard();
 renderAll();
 requestAnimationFrame(frame);
 host.post({ type: "ready" });

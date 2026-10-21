@@ -3,3 +3,6 @@ obj/
 .vs/
 *.user
 TestResults/
+
+# Instalador oficial, só para análise local (binário de terceiros, não versionar)
+ExeOriginal/

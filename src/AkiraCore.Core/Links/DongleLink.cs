@@ -16,12 +16,31 @@ public sealed class DongleLink(IReportPort port, IDelay? delay = null) : IKeyboa
     public void SendLightBlock(ReadOnlySpan<byte> block, LightTarget target = LightTarget.Keys) =>
         SendReport(PacketBuilder.DongleLighting(block, target));
 
-    public void SendPerKeyColors(ReadOnlySpan<byte> buffer)
+    public void SendPerKeyColors(ReadOnlySpan<byte> buffer) =>
+        SendChunks(PacketBuilder.DonglePerKeyChunks(buffer), PerKeyProtocol.DongleChunkDelay);
+
+    public void SendKeyRemap(KeyLayer layer, ReadOnlySpan<byte> table)
     {
-        foreach (var report in PacketBuilder.DonglePerKeyChunks(buffer))
+        // fcn.00418df0: 21 pedaços com cabeçalho 10 (camada normal) ou 12 (camada Fn), 2 ms entre eles
+        var header = layer == KeyLayer.Fn ? KeyRemapProtocol.DongleFnHeader : KeyRemapProtocol.DongleHeader;
+        _delay.Wait(KeyRemapProtocol.DongleSettleDelay);
+        SendChunks(PacketBuilder.DongleChunks(header, table), PerKeyProtocol.DongleChunkDelay);
+    }
+
+    // fcn.0042db50: só os pedaços com cabeçalho 09; o dongle não usa o 04 19 do cabo
+    public void SendMacros(ReadOnlySpan<byte> data) =>
+        SendChunks(PacketBuilder.DongleMacroChunks(data), MacroProtocol.DongleChunkDelay);
+
+    // fcn.00414410: report único 07 10 00 + bloco
+    public void SendDeviceSettings(ReadOnlySpan<byte> block) =>
+        SendReport(PacketBuilder.DongleDeviceSettings(block));
+
+    private void SendChunks(IEnumerable<byte[]> reports, TimeSpan pause)
+    {
+        foreach (var report in reports)
         {
             SendReport(report);
-            _delay.Wait(PerKeyProtocol.DongleChunkDelay);
+            _delay.Wait(pause);
         }
     }
 
@@ -34,7 +53,13 @@ public sealed class DongleLink(IReportPort port, IDelay? delay = null) : IKeyboa
         _delay.Wait(DongleProtocol.FactoryResetSettleDelay);
     }
 
-    private void SendReport(byte[] report)
+    public bool HasBatteryQuery => true;
+
+    // fcn.004357d0: mesma transação dos outros comandos; o nível vem no eco
+    public byte[] QueryBattery() => SendReport(PacketBuilder.DongleBatteryQuery());
+
+    /// <summary>Envia e espera o eco; devolve o report de confirmação inteiro.</summary>
+    private byte[] SendReport(byte[] report)
     {
         if (!port.Write(report))
         {
@@ -52,7 +77,7 @@ public sealed class DongleLink(IReportPort port, IDelay? delay = null) : IKeyboa
             var response = port.Read(DongleProtocol.ReportLength, DongleProtocol.ReadTimeout);
             if (response is not null && PacketBuilder.IsDongleEcho(response, report))
             {
-                return;
+                return response;
             }
             _delay.Wait(DongleProtocol.ReadRetryDelay);
         }

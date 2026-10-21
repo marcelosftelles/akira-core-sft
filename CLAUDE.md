@@ -14,16 +14,34 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
   `'self'`), embutida no .exe e servida pelo `EmbeddedUi` em `https://akira.ui` dentro de um WebView2.
   O Laboratório continua WinForms (ferramenta técnica).
 - Contrato da interface: a página manda `ready`, `apply {lighting}`, `setLight {on, lighting}`,
-  `setOption {key, value}`, `factoryReset`, `diagnose`, `openLab`; o app responde `state`, `device`,
-  `status {kind, text}` e `log {title, lines}`. Validação em `AkiraCore.Core.Presentation`
-  (`LightingState`, `EffectView`): estado inválido nunca vira envio.
+  `setOption {key, value}`, `setKeys {assignments}`, `saveMacros {macros, assignments}`,
+  `setDevice {settings}`, `factoryReset`, `diagnose`, `openLab`, `saveCustomLights {schemes}`,
+  `useCustomLight {id}`, `textMacro {text, delay}`, `exportBackup`, `importBackup`,
+  `exportMacros {macros}`, `importMacros`, `exportColors {id}`, `importColors`, `switchProfile {id}`,
+  `createProfile {name}`, `renameProfile {id, name}`, `deleteProfile {id}`; o app responde `state`
+  (com os blocos `keyboard {catalog, assignments, macros, settings}`, `customLights {schemes, activeId}`
+  e `profiles {list, activeId}`), `device` (com `battery {level, cable}`), `status {kind, text}`,
+  `log {title, lines}`, `customLights`, `profiles`, `macroText {events, skipped, layout}`,
+  `macrosImported {macros}` e `key {scan, down}` (tecla tocada no AKIRA, scan code
+  do conjunto 1 com `0xE000` para prefixo E0; mapa em `SCAN_CODES` no `layout.js`).
+  O Raw Input de teclado aceita um destino por processo: há um `RawKeyboardMonitor` só, preso à
+  janela principal; prévia (janela visível) e Laboratório pedem escuta com `Listen()`. Validação em `AkiraCore.Core.Presentation`
+  (`LightingState`, `EffectView`, `KeysState.cs`): estado inválido nunca vira envio.
+  As páginas Teclas e Macros e o grupo Teclado de Ajustes ficam em `Ui/keys.js`; Cores por tecla
+  em `Ui/colors.js`. Arquivos exportados (backup, macros, cores) são JSON com campo `format`,
+  validados em `ConfigFiles`. Perfis: os campos de `AppSettings` são o perfil ativo em uso e cada
+  gravação copia para a lista (`MainForm.Profiles.cs`); macros e esquemas de cores são globais.
+  Texto em macro: `TextMacro` no Core, layout do Windows em `WindowsTextLayout` (App).
+  Revisão da interface no Windows: `scratchpad` com servidor Node estático e Edge headless
+  (`--screenshot` ou CDP); não há Python nesta máquina.
 - Visual: estilo Ajustes do macOS, fonte do sistema (Segoe UI Variable), um azul de destaque, tema
   segue o Windows. A prévia do teclado é aproximada; geometria em `Ui/layout.js`, gerada do
   `rgb-keyboard.xml` oficial.
 - Todo offset de byte novo ganha teste em `tests/AkiraCore.Core.Tests` citando a função de origem
   no binário oficial (ex.: `fcn.0042b170`).
-- Segurança: só comandos de iluminação, mais o reset de fábrica oficial (`0F` no dongle,
-  pedido do usuário em 17/10/2026). **Nunca** implementar nada do fluxo de atualização de
+- Segurança: comandos de iluminação, o reset de fábrica oficial (`0F` no dongle, pedido do
+  usuário em 17/10/2026) e, a pedido do usuário em 20/10/2026, remapeamento de teclas, macros e
+  configurações gerais, todos copiados de funções do binário oficial. **Nunca** implementar nada do fluxo de atualização de
   firmware (`FirmwareUpdateTool.zip`). Opcodes desconhecidos não são enviados às cegas: tudo
   se baseia no que o instalador oficial já mapeia.
 
@@ -33,6 +51,9 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
 dotnet test                                  # roda em qualquer SO
 dotnet run --project src/AkiraCore.App       # só executa no Windows
 ```
+
+`dotnet akira` é atalho para o `dotnet run` acima: `tools/dotnet-akira.cmd`, com `tools` no PATH do
+usuário (o dotnet procura `dotnet-<nome>` no PATH quando o comando não existe).
 
 O teste em hardware é feito pelo usuário no Windows; o ambiente de nuvem só compila e roda testes.
 Para revisar a interface aqui: `python3 -m http.server` dentro de `src/AkiraCore.App/Ui` e
@@ -76,6 +97,52 @@ Iluminação: `05 10 00` + bloco. Cores por LED: 21 reports `14 <tam> <pedaço>`
 
 **Cores por LED:** buffer de 576 bytes, LED `i` em `i*4` como `[i, R, G, B]`, `AA 55` em 574.
 Índices válidos 1..142. Layout oficial usa 82 índices entre 1 e 121 (matriz 6 × 18).
+
+**Teclas, macros e configurações gerais (20/10/2026, sem teste em hardware ainda):**
+remapeamento = tabela de 576 bytes por camada, slot de 4 bytes em `key_index × 4`
+(`fcn.00418550` cabo `04 11`/`04 27`; `fcn.00418df0` dongle `10`/`12` em pedaços de 28).
+Macros = buffer com 100 cabeçalhos + blocos a partir de `0x190` (`fcn.0042d5d0` cabo
+`04 19`/`04 15`; `fcn.0042db50` dongle `09`). Configurações = bloco de 16 bytes
+(`fcn.004141a0` cabo `04 17`; `fcn.00414410` dongle `07 10 00`). Detalhes em `docs/protocolo.md`.
+O oficial monta `04 11`/`04 27` com `cmovne`, por isso a varredura do T5 não os achou; o `04 2B`
+dela era o atalho Alt + Tab dentro da tabela. Reset no cabo agora reenvia macros, teclas,
+iluminação e configurações, na ordem de `fcn.00434ee0`.
+Ferramenta de análise usada: disassembler descartável em .NET com a biblioteca Iced
+(instalador baixado de `adamantiun.com.br`, mesmo SHA-256).
+
+**Bateria (21/10/2026, analisado com a REA/Ghidra, sem teste em hardware ainda):** só no dongle,
+`fcn.004357d0`: report `20 01` pela transação normal; resposta ecoa `20 01 00` e traz o nível
+(0..100) em `[4]` (com Report ID; o oficial lê `[3]` porque `fcn.00451190` tira o ID 0). A cada
+15 s e ao conectar. O protocolo não informa carga: o oficial passa sempre 0 em
+`SetBatteryInfo(nível, carregando)` da `mui.dll`. O app mostra "carregando" quando o cabo aparece
+no Windows e lê o nível pelo dongle mesmo com o cabo ligado. Diagnóstico mostra a resposta crua.
+Instalador original fica em `ExeOriginal/` (fora do git). Engenharia reversa nova: usar a REA.
+
+## Roteiro de features (pedido do usuário em 21/10/2026: tudo, por fases)
+
+**Fase 1, com o protocolo que já existia (feita em 21/10/2026, sem teste em hardware):** aviso de
+bateria fraca (`BatteryAlert`, balão da bandeja), backup completo e importar/exportar macros e
+esquemas (`ConfigFiles`), texto que vira macro no firmware (`TextMacro` + `WindowsTextLayout`;
+acento por tecla morta, AltGr = Alt direito), página Cores por tecla (`CustomLightState`, modo
+`0x80` + `0x23`/`14`; pintar um esquema já o usa no teclado; escolher efeito sai dele) e perfis
+(`ProfileState`; seletor na barra lateral, lista em Ajustes e submenu na bandeja).
+
+**Fase 2, protocolo mapeado na REA em 21/10/2026 e ainda não implementado:**
+- `fcn.00434230` é o laço de comandos do oficial. Em espera, roda os modos contínuos: 3 =
+  `fcn.0042adb0` (lê `04 F5` a cada ciclo e pinta o desenho da tela: espelho real dos LEDs, só
+  cabo), 6 = `fcn.00427f60` (luz personalizada em tempo real) e 7 = `fcn.004332c0` (ritmo musical).
+- Ritmo musical: áudio pelo WASAPI (CLSID do MMDeviceEnumerator em `0x574de4`). Dongle
+  `fcn.00432b00`: report `0B 1C 00`, `[4]` modo de frente, `[5]` modo de fundo, `[6]` brilho e,
+  a partir de `[7]`, a altura de cada coluna (o firmware desenha). Cabo `fcn.004328c0`.
+- Cabo, tempo real e música: `04 20` com `[8]` = 3 (ou 8), quadro de 0xC0 (ou 0x200) bytes por
+  `fcn.0044ef50`, depois `04 02`. O formato do quadro está nos blocos que o Ghidra descartou:
+  ler o assembly de `fcn.00427f60`/`fcn.004328c0`.
+- Comando `1F` no dongle (item `0xd` do laço), provavelmente "Reiniciar teclado"; confirmar.
+- Fora de escopo: tela TFT (`screen="0"`): `fcn.00422ac0`/`00423360` (GIF, `04 72` e `7F 03`) e
+  `fcn.00423a80`/`00423bb0` (relógio, `04 28` e `0C 10`).
+
+**Fase 3, novas:** perfil automático por programa, regras de luz (bloqueio, tela desligada,
+horário), atalhos globais, linha de comando e efeitos vivos pelo `04 20` (tela, CPU, avisos).
 
 ## Situação atual (17/10/2026)
 
@@ -123,6 +190,11 @@ Se tudo der negativo: concluir que as fitas são controladas só pelo firmware e
 atalhos no app.
 
 ## Pendências menores
+
+- Prévia dos efeitos: aproximação sem descrição oficial. Rolagem é vertical (único com o par de
+  direções alternativo, bit `0x08`). O usuário relatou em 20/10/2026 que alguns efeitos não batem
+  com o teclado; falta saber quais e como aparecem de verdade (incluindo se velocidade 0 é a mais
+  lenta e se brilho 0 apaga).
 
 - Faixa real do campo direção (hoje 0 ou 1).
 - Significado do opcode `0xF0` (enviado porque o oficial sempre envia).

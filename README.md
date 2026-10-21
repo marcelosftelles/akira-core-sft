@@ -1,85 +1,207 @@
-# AKIRA CORE
+<div align="center">
 
-App próprio para controlar a iluminação do teclado AKIRA CORE (ADAMANTIUN GAMER) no Windows.
-Protocolo reconstruído por engenharia reversa do driver oficial v1.0.0.0.
+# AkiraCore
 
-## Download
+**Um app leve e de código aberto para controlar a iluminação, as teclas e as macros do teclado
+AKIRA CORE (SK11A), da Adamantiun Gamer, no Windows.**
 
-Baixe o `AkiraCore.exe` na página de [Releases](https://github.com/marcelosftelles/akira-core-sft/releases).
-É um arquivo único que não precisa de instalação nem do .NET; o `.sha256` ao lado serve para
-conferir o download. Para publicar uma versão nova: `git tag v0.2.0 && git push origin v0.2.0`
-(o workflow `.github/workflows/release.yml` compila, roda os testes e anexa o .exe).
+Uma alternativa ao software oficial: mesmos efeitos, interface em português e moderna,
+e nada além do que você precisa para deixar o teclado do seu jeito.
 
-## Interface
+![Windows 10 e 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
+![Cabo USB e dongle 2.4G](https://img.shields.io/badge/conex%C3%A3o-cabo%20%7C%20dongle%202.4G-2EA44F)
+![Em português](https://img.shields.io/badge/idioma-portugu%C3%AAs-009C3B)
+![.NET 8](https://img.shields.io/badge/.NET-8-512BD4)
 
-Visual inspirado nos Ajustes do macOS: barra lateral com os 19 efeitos, painel com uma prévia
-animada do teclado (desenhada com as posições das 82 teclas do `rgb-keyboard.xml` oficial) e
-grupos com cor, arco-íris, brilho, velocidade e direção. Não há botão "Aplicar": a mudança vai para
-o teclado ao soltar o controle. Tema claro e escuro seguem o Windows.
+<img src="docs/img/demo.gif" alt="Prévia animada do teclado passando pelos efeitos Rolando, Fluindo, Colorido e Rotacionando" width="640">
 
-A tela é HTML/CSS/JS (`src/AkiraCore.App/Ui`) dentro de um WebView2, embutida no executável e
-servida em `https://akira.ui` sem tocar na rede. Precisa do
-[Microsoft Edge WebView2 Runtime](https://go.microsoft.com/fwlink/p/?LinkId=2124703), que já vem no
-Windows 11 e no Windows 10 atualizado; sem ele o app avisa e a bandeja continua funcionando.
+</div>
 
-Para revisar o visual sem Windows: sirva a pasta `Ui` (`python -m http.server` dentro dela) e abra
-`index.html` num navegador. Sem WebView2 a página usa o `dev-mock.js`, que aceita `?view=strips`,
-`?view=settings`, `?device=dongle|none`, `?off=1`, `?effect=static&rainbow=0&color=%2300E5FF`,
-`?log=1` e `?dialog=1`.
+> Projeto independente, feito por um usuário do teclado. Não tem vínculo com a Adamantiun Gamer
+> nem é suportado por ela.
 
-## Canais suportados
+## Por que usar
 
-| Conexão | Interface | Formato |
+- **Simples de usar.** Escolha o efeito na lista, ajuste cor, brilho e velocidade, e pronto.
+  Não existe botão "Aplicar": o teclado muda assim que você solta o controle.
+- **Prévia ao vivo.** Um desenho do teclado mostra o efeito antes de você olhar para a mesa.
+  Com a janela aberta, as teclas que você toca no AKIRA acendem na prévia nos efeitos que
+  reagem ao toque. Só a posição da tecla vai para a tela; nada é guardado, e na bandeja ou
+  minimizado o app não escuta o teclado.
+- **Funciona no cabo e no dongle 2.4G.** O app encontra o teclado sozinho e mostra por onde
+  está conectado.
+- **Fica na bandeja.** Liga e desliga a luz sem abrir a janela, e pode iniciar escondido junto
+  com o Windows.
+- **Lembra das suas escolhas.** A configuração fica salva no seu computador.
+- **Acompanha o tema do Windows**, claro ou escuro.
+- **Não usa a internet.** Nenhum dado sai do seu computador.
+- **Código aberto.** Qualquer pessoa pode ler o que o app faz e o que ele envia ao teclado.
+
+## O que dá para fazer
+
+- **19 efeitos**, os mesmos do app oficial: Estático, Acender ao tocar, Apagar ao tocar, Brilhante,
+  Queda, Colorido, Respiração, Espectro, Para fora, Rolagem, Rolando, Rotacionando, Explodir,
+  Lançamento, Ondulações, Fluindo, Pulsante, Inclinação e Vaivém.
+- **Cor fixa ou arco-íris**, nos efeitos que aceitam cor.
+- **Brilho e velocidade** em 6 níveis, e **direção** nos efeitos que andam pelo teclado.
+- **Desligar a luz** com um clique.
+- **Guia das fitas de LED** dos cantos e da loading bar perto do knob, com os atalhos do teclado
+  que controlam cada uma.
+- **Trocar o que cada tecla faz**, na camada normal e na camada com `Fn` segurado: outra tecla, um
+  atalho (Ctrl + C, Win + D…), multimídia, clique ou rolagem do mouse, uma macro, ou desativar.
+- **Macros**: grave uma sequência de teclas (com as pausas reais ou fixas), acrescente cliques do
+  mouse e escolha a tecla que dispara, tocando uma vez, N vezes, até apertar de novo ou enquanto
+  segurar. Até 100 macros, guardadas no próprio teclado.
+- **Cores por tecla**: pinte cada tecla com uma cor, guarde vários esquemas e troque entre eles.
+- **Texto em macro**: digite um texto e o teclado passa a escrevê-lo sozinho, mesmo com o app
+  fechado (no layout de teclado que o Windows usa, com acentos).
+- **Perfis**: iluminação, teclas e configurações diferentes para jogo, trabalho etc., com troca
+  pela barra lateral ou pela bandeja.
+- **Backup**: exporte e importe tudo num arquivo; macros e esquemas de cores também podem ser
+  exportados sozinhos.
+- **Aviso de bateria fraca** no 2.4G, pela notificação do Windows.
+- **Configurações do teclado**: bloquear a tecla Windows, Alt + F4 e Alt + Tab, modo do `Fn`
+  (segurar ou alternar), tempo de suspensão e tempo de resposta das teclas.
+- **Restaurar o padrão de fábrica**: iluminação, teclas, macros e configurações.
+- **Bateria**: o nível aparece na barra lateral e na dica do ícone da bandeja quando o teclado está
+  no dongle 2.4G (o teclado só informa por ele), e "carregando" quando o cabo está ligado no PC.
+
+### Alguns dos efeitos
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/img/efeitos/static.png" alt="Efeito Estático em ciano" width="200"><br>Estático</td>
+    <td align="center"><img src="docs/img/efeitos/rolling.png" alt="Efeito Rolando" width="200"><br>Rolando</td>
+    <td align="center"><img src="docs/img/efeitos/flowing.png" alt="Efeito Fluindo" width="200"><br>Fluindo</td>
+    <td align="center"><img src="docs/img/efeitos/rotating.png" alt="Efeito Rotacionando" width="200"><br>Rotacionando</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/efeitos/colourful.png" alt="Efeito Colorido" width="200"><br>Colorido</td>
+    <td align="center"><img src="docs/img/efeitos/spectrum.png" alt="Efeito Espectro" width="200"><br>Espectro</td>
+    <td align="center"><img src="docs/img/efeitos/outward.png" alt="Efeito Para fora" width="200"><br>Para fora</td>
+    <td align="center"><img src="docs/img/efeitos/shuttle.png" alt="Efeito Vaivém" width="200"><br>Vaivém</td>
+  </tr>
+</table>
+
+As imagens vêm da prévia do próprio app; no teclado, a cor e o brilho reais dependem dos LEDs.
+
+### Claro ou escuro, como o seu Windows
+
+<table>
+  <tr>
+    <td><img src="docs/img/tela-clara.png" alt="AkiraCore no tema claro"></td>
+    <td><img src="docs/img/tela-escura.png" alt="AkiraCore no tema escuro"></td>
+  </tr>
+</table>
+
+### Fitas de LED e loading bar
+
+As fitas dos cantos e a loading bar perto do knob mudam só pelos atalhos do teclado. O app mostra
+onde fica cada uma e quais teclas usar.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/fitas-escuro.png">
+  <img src="docs/img/fitas-claro.png" alt="Tela das fitas e da loading bar, com os atalhos do teclado">
+</picture>
+
+## Comparado ao software oficial
+
+| | AkiraCore | Software oficial |
 |---|---|---|
-| Cabo USB | MI_02 (page 0xFF13), feature report de 65 bytes | Transação 18, 13, dados, 02, F0 |
-| Dongle 2.4G | MI_03 (page 0xFF60), input/output de 33 bytes | Report único `05 10 00` + bloco + checksum, confirmado por eco |
-| Bluetooth | não suportado (nem pelo app oficial) | |
+| Efeitos de iluminação das teclas | ✅ Os 19 | ✅ Os 19 |
+| Cabo USB e dongle 2.4G | ✅ | ✅ |
+| Bluetooth | ❌ | ❌ |
+| Bandeja do sistema | ✅ | ✅ |
+| Código aberto | ✅ | ❌ |
+| Remapeamento de teclas (normal e Fn) | ✅ | ✅ |
+| Macros de teclado e mouse | ✅ | ✅ |
+| Bloquear Win, Alt + F4, Alt + Tab; suspensão; tempo de resposta | ✅ | ✅ |
+| Teclas que abrem programa, site ou digitam texto | ❌ | ✅ (com o app aberto) |
+| Cor individual por tecla | Em estudo | ✅ |
+| Fitas dos cantos e loading bar | Só pelos atalhos | Só pelos atalhos |
 
-O bloco de iluminação (16 bytes) é o mesmo nos dois canais.
+Teclas, macros e configurações ficam gravadas no teclado e valem mesmo com o app fechado. Abrir
+programa, abrir site e digitar texto dependem do software oficial rodando no computador, por isso
+ficaram de fora.
 
-## Fitas laterais
+## Como instalar
 
-O app oficial tem a página "Modo de luz lateral" pronta, mas desligada no XML deste modelo
-(`sidelight="0"`). O firmware aceita 10 predefinições no byte 0 do bloco (0x20 a 0x29).
-No cabo vai na mesma transação das teclas; no dongle o cabeçalho muda para `05 01 00`.
-Não há cor livre nem controle separado de cada lado.
+**Requisitos:** Windows 10 ou 11 (64 bits) e o
+[Microsoft Edge WebView2 Runtime](https://go.microsoft.com/fwlink/p/?LinkId=2124703), que já vem no
+Windows 11 e no Windows 10 atualizado.
 
-**Status:** no cabo, o firmware deste teclado pisca e ignora esses valores. Por isso a função
-saiu da tela principal e foi para o Laboratório, junto com:
+1. Baixe o `AkiraCore.exe` na página de [Releases](https://github.com/marcelosftelles/akira-core-sft/releases)
+   (ou gere o seu, veja [Para desenvolvedores](#para-desenvolvedores)). Não precisa instalar nada:
+   o executável roda sozinho.
+2. **Feche o software oficial**, inclusive o ícone da bandeja. Os dois disputam o teclado e não
+   devem ficar abertos ao mesmo tempo.
+3. Abra o `AkiraCore.exe`. O status no canto superior mostra se o teclado foi encontrado.
 
-- Monitor de atalhos: escuta todas as coleções HID que o Windows deixa abrir (inclusive os
-  avisos `05 A6 ...` da coleção 0xFFFF) e as teclas do AKIRA via Raw Input, com marcadores
-  para anotar cada atalho apertado.
-- Bloco experimental: envia 16 bytes livres pelo canal de iluminação, com assinatura forçada.
-- Foto do estado: lê o que o teclado devolve (GET_REPORT, e opcionalmente os ACKs completos)
-  e mostra o que mudou desde a foto anterior.
+Para iniciar com o Windows já escondido na bandeja, ligue Ajustes › Iniciar com o Windows. O app
+grava o próprio caminho com `--hidden` em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; se
+mover o `.exe` de pasta, desligue e ligue de novo. A chave também respeita o que for desabilitado no
+Gerenciador de Tarefas (aba Aplicativos de inicialização).
 
-A investigação completa, com a evidência do AULA F108 Pro (mesma plataforma, onde as fitas são
-só firmware) e o roteiro de testes, está em [`docs/investigacao-fitas.md`](docs/investigacao-fitas.md).
+## Dúvidas comuns
 
-## Restaurar padrão de fábrica
+**O app não encontra o teclado.**
+Confira se o software oficial está fechado de verdade (inclusive na bandeja). No dongle, aperte uma
+tecla para acordar o teclado. Em Ajustes › Diagnóstico o app lista o que o Windows vê do teclado.
 
-Em Ajustes › Padrão de fábrica, baseado na "Redefinição de fábrica" do app oficial (`fcn.00414870`):
+**Como mudo as fitas dos cantos e a loading bar?**
+Pelos atalhos do próprio teclado. Nem o app oficial tem comando para elas. Laterais: `Fn` + `Shift`
+esquerdo (modo), `Fn` + `Z` (cor), `Fn` + `Alt` esquerdo (brilho). Loading bar: `Fn` + `Shift`
+direito, `Fn` + `/?` e `Fn` + `Alt` direito.
 
-| Canal | O que é enviado |
-|---|---|
-| Dongle 2.4G | Report `0F` (reset do firmware: apaga teclas, macros e luz guardadas), 50 ms, iluminação padrão |
-| Cabo USB | Só a iluminação padrão. O app oficial não tem comando de reset no cabo |
+**As cores saem trocadas (vermelho vira azul).**
+Ligue Ajustes › Corrigir cores.
 
-Iluminação padrão: Rolando (modo 11), arco-íris, vermelho, brilho 5, velocidade 3.
-As fitas não têm comando no PC; use os atalhos: laterais com Fn + Shift/Z/Alt esquerdos,
-loading bar com Fn + Shift/"/?"/Alt direitos.
+**O que o "Restaurar padrão de fábrica" faz?**
+Volta a iluminação para o padrão (Rolando, arco-íris, brilho máximo) e **apaga as teclas mudadas,
+as macros e as configurações do teclado**. No dongle, envia o mesmo reset do firmware que o app
+oficial; no cabo, onde o oficial não tem esse comando, regrava os padrões na mesma ordem que ele.
 
-## Cores por LED (modo personalizado)
+**Mudei uma tecla e ela parou de funcionar. Como desfaço?**
+Em Teclas, escolha a tecla e volte a ação para "Original", ou use Restaurar em "Todas as teclas".
+Pelo mouse dá para fazer tudo isso mesmo que o teclado esteja trocado.
 
-Modo `0x80` + buffer de 576 bytes, 4 bytes por LED `[índice, R, G, B]` na posição índice × 4,
-assinatura `AA 55` no fim. Cabo: transação com opcode `0x23` anunciando 9 pacotes. Dongle: 21 reports
-`14 <tamanho> <pedaço>` com 28 bytes de dados cada (o último com 16).
+**Funciona por Bluetooth, no Linux ou no macOS?**
+Não. O controle de iluminação só existe pelo cabo e pelo dongle, e o app é feito para Windows.
 
-O layout oficial usa 82 dos índices 1 a 121; os demais (ver `LedMap.UnmappedIndices`) são candidatos
-às fitas dos cantos e à mini fita. O Localizador de LED do Laboratório serve para mapeá-los.
+## É seguro?
 
-## Estrutura
+O AkiraCore envia ao teclado só os comandos de iluminação, teclas, macros, configurações e reset de
+fábrica, todos copiados do que o software oficial já envia. Ele **nunca** mexe no firmware e não manda comandos desconhecidos.
+Mesmo assim, é um projeto não oficial: use por sua conta e risco.
+
+Quer ver exatamente o que sai do computador? Ligue Ajustes › Simular envio: o app mostra os bytes
+na tela sem mandar nada ao teclado.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/ajustes-escuro.png">
+  <img src="docs/img/ajustes-claro.png" alt="Tela de Ajustes com a lista de bytes enviados ao teclado">
+</picture>
+
+## Status
+
+Funcionando e testado em hardware: os efeitos das teclas pelo cabo e pelo dongle, cor, brilho,
+velocidade, desligar a luz, bandeja e configuração salva.
+
+Novo e ainda sem teste em hardware: teclas, macros e configurações do teclado. Os formatos foram
+conferidos byte a byte no driver oficial (detalhes em [docs/protocolo.md](docs/protocolo.md)), mas
+falta a confirmação no teclado de verdade, principalmente dos botões 4 e 5 do mouse.
+
+Em investigação: se dá para controlar as fitas dos cantos e a loading bar pelo computador. As
+evidências até agora indicam que elas respondem só ao firmware. O andamento está em
+[docs/investigacao-fitas.md](docs/investigacao-fitas.md).
+
+Encontrou um problema ou tem um AKIRA CORE para ajudar nos testes? Abra uma
+[issue](https://github.com/marcelosftelles/akira-core-sft/issues).
+
+## Para desenvolvedores
+
+O protocolo foi reconstruído por engenharia reversa estática do driver oficial v1.0.0.0. Os detalhes
+de cada canal, byte a byte, estão em [docs/protocolo.md](docs/protocolo.md).
 
 | Projeto | Papel |
 |---|---|
@@ -87,25 +209,36 @@ O layout oficial usa 82 dos índices 1 a 121; os demais (ver `LedMap.UnmappedInd
 | `src/AkiraCore.App` | Janela WinForms que hospeda a interface HTML (WebView2), bandeja, Laboratório e HID via P/Invoke. |
 | `tests/AkiraCore.Core.Tests` | Testes dos pacotes byte a byte (xUnit). |
 
-## Rodar
+Precisa do [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 
 ```
-dotnet test
-dotnet run --project src/AkiraCore.App
+dotnet test                              # roda em qualquer sistema
+dotnet run --project src/AkiraCore.App   # só no Windows
 ```
 
-Feche o app oficial pela bandeja antes de usar. Em Ajustes, "Simular envio" mostra os bytes sem enviar.
+Atalho: com a pasta `tools` no PATH do usuário, `dotnet akira` faz o mesmo `dotnet run` de qualquer
+pasta (argumentos extras vão para o app, ex.: `dotnet akira --hidden`).
 
-## Gerar o executável
+Gerar o executável único:
 
 ```
 dotnet publish src/AkiraCore.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 ```
 
-Para iniciar escondido na bandeja: `AkiraCore.exe --hidden`.
+A interface é HTML/CSS/JS em `src/AkiraCore.App/Ui`, embutida no executável e servida em
+`https://akira.ui` sem tocar na rede. Para revisar o visual sem Windows, sirva essa pasta
+(`python -m http.server` dentro dela) e abra `index.html` num navegador. Sem WebView2 a página usa o
+`dev-mock.js`, que aceita `?view=strips`, `?view=settings`, `?device=dongle|none`, `?off=1`,
+`?effect=static&rainbow=0&color=%2300E5FF`, `?battery=15` e `?cable=1` (bateria na barra lateral), `?log=1`, `?dialog=1`, `?typing=1` (simula teclas
+tocadas no AKIRA, para ver os efeitos reativos), `?view=keys` e `?view=macros`, `?macros=1` (já
+vem com uma macro e duas teclas mudadas), `?select=55` (abre a tecla de índice 55 em Teclas),
+`?view=colors` com `?colors=1` (esquema de cores em uso) ou `?colors=0` (nenhum esquema) e
+`?text=1` (abre "Inserir texto" em Macros).
 
-## Suposições ainda não confirmadas em hardware
+Em Ajustes há também o **Laboratório**, com as ferramentas usadas na investigação do protocolo.
 
-- Ordem das cores no pacote (R, G, B). Se vermelho acender azul, ligue Ajustes › Corrigir cores.
-- Faixa do campo de direção (o app usa 0 ou 1).
-- Função exata do comando 0xF0 (enviado porque o app oficial sempre envia).
+## Aviso legal
+
+AKIRA CORE e Adamantiun Gamer são marcas de seus respectivos donos. Este projeto não é afiliado,
+endossado nem suportado por eles. O protocolo foi estudado só para permitir que o dono do teclado
+controle a iluminação do próprio aparelho.

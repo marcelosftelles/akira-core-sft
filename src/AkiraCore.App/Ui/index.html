@@ -13,17 +13,32 @@
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <h1 class="wordmark">AKIRA CORE</h1>
+        <div class="brand-board" id="brand-board" aria-hidden="true"></div>
+        <div class="model-row">
+          <h1 class="model">AKIRA CORE <span>SK11A</span></h1>
+          <p class="battery" id="battery" hidden>
+            <span class="battery-glyph" id="battery-glyph" aria-hidden="true"><span class="battery-fill"></span></span>
+            <svg class="bolt" id="battery-bolt" viewBox="0 0 10 14" aria-hidden="true"><path d="M6 0L0 8h4l-1 6 6-8H5z"/></svg>
+            <span id="battery-text"></span>
+          </p>
+        </div>
         <p class="device" id="device" data-state="searching">
           <span class="dot" aria-hidden="true"></span>
           <span id="device-text">Procurando o teclado</span>
         </p>
+        <label class="profile-picker">
+          <span class="visually-hidden">Perfil</span>
+          <select id="profile-select" title="Perfil em uso"></select>
+        </label>
       </div>
 
       <p class="nav-title" id="effects-title">Efeitos</p>
       <ul class="nav effects" id="effects" role="listbox" aria-labelledby="effects-title"></ul>
 
       <ul class="nav nav-bottom">
+        <li><button class="nav-item" type="button" data-view="colors">Cores por tecla</button></li>
+        <li><button class="nav-item" type="button" data-view="keys">Teclas</button></li>
+        <li><button class="nav-item" type="button" data-view="macros">Macros</button></li>
         <li><button class="nav-item" type="button" data-view="strips">Fitas e loading bar</button></li>
         <li><button class="nav-item" type="button" data-view="settings">Ajustes</button></li>
       </ul>
@@ -38,7 +53,7 @@
           <p class="status" role="status" aria-live="polite"></p>
           <label class="toggle">
             <span>Luz</span>
-            <input type="checkbox" role="switch" id="light-on" checked>
+            <input type="checkbox" role="switch" class="light-switch" checked>
           </label>
         </header>
 
@@ -79,6 +94,83 @@
         </div>
       </section>
 
+      <section class="view" id="view-colors" aria-labelledby="colors-title" hidden>
+        <header class="head">
+          <div class="head-text">
+            <h2 id="colors-title">Cores por tecla</h2>
+            <p class="lede">Pinte cada tecla com uma cor. No teclado elas ficam fixas, sem efeito;
+              escolha um efeito na lista para voltar a ele.</p>
+          </div>
+          <p class="status" role="status" aria-live="polite"></p>
+          <label class="toggle">
+            <span>Luz</span>
+            <input type="checkbox" role="switch" class="light-switch" checked>
+          </label>
+        </header>
+
+        <div class="group" id="colors-empty">
+          <div class="row">
+            <span class="label">Nenhum esquema ainda
+              <small>Um esquema guarda a cor de cada tecla e o brilho</small></span>
+            <span class="inline">
+              <button class="button" type="button" data-import-colors>Importar…</button>
+              <button class="button filled" type="button" id="scheme-first">Criar esquema</button>
+            </span>
+          </div>
+        </div>
+
+        <div class="group" id="colors-editor">
+          <div class="row">
+            <label class="label" for="scheme-select">Esquema <small id="scheme-state">No teclado agora</small></label>
+            <span class="inline">
+              <button class="button filled" type="button" id="scheme-use">Usar no teclado</button>
+              <select id="scheme-select"></select>
+            </span>
+          </div>
+        </div>
+
+        <figure class="stage" id="color-board"></figure>
+
+        <div class="group" id="colors-tools">
+          <div class="row">
+            <span class="label" id="brush-label">Pincel
+              <small>Clique ou arraste. Botão direito copia a cor</small></span>
+            <div class="swatches" id="brush-swatches" role="radiogroup" aria-labelledby="brush-label"></div>
+          </div>
+          <div class="row">
+            <span class="label">Pintar de uma vez <small>Com a cor do pincel</small></span>
+            <div class="chips wrap" id="color-groups"></div>
+          </div>
+          <div class="row">
+            <label class="label" for="scheme-brightness">Brilho</label>
+            <div class="slider">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 3.5v1.5M10 15v1.5M3.5 10H5M15 10h1.5"/></svg>
+              <input type="range" id="scheme-brightness" min="0" max="5" step="1">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2.5M10 16v2.5M1.5 10H4M16 10h2.5M4 4l1.8 1.8M14.2 14.2L16 16M4 16l1.8-1.8M14.2 5.8L16 4"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="group" id="colors-manage">
+          <div class="row">
+            <label class="label" for="scheme-name">Nome</label>
+            <input type="text" id="scheme-name" class="text" maxlength="40" spellcheck="false">
+          </div>
+          <div class="row">
+            <span class="label">Esquemas <small>Até 50, guardados no app</small></span>
+            <span class="inline">
+              <button class="button" type="button" id="scheme-new">Novo</button>
+              <button class="button" type="button" id="scheme-duplicate">Duplicar</button>
+              <button class="button" type="button" id="scheme-export">Exportar…</button>
+              <button class="button" type="button" id="scheme-import" data-import-colors>Importar…</button>
+            </span>
+          </div>
+          <div class="row">
+            <button class="link danger" type="button" id="scheme-delete">Excluir esquema</button>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-strips" aria-labelledby="strips-title" hidden>
         <header class="head">
           <div class="head-text">
@@ -90,7 +182,7 @@
 
         <figure class="stage" data-board data-zones></figure>
 
-        <h3 class="group-title">Fitas laterais, nos cantos de baixo</h3>
+        <h3 class="group-title">Fitas laterais, nas bordas esquerda e direita</h3>
         <div class="group" data-zone-group="strips">
           <div class="row"><span class="label">Trocar o modo</span><span class="keys"><kbd>Fn</kbd><kbd>Shift esquerdo</kbd></span></div>
           <div class="row"><span class="label">Trocar a cor</span><span class="keys"><kbd>Fn</kbd><kbd>Z</kbd></span></div>
@@ -108,6 +200,126 @@
           um dos modos é desligado.</p>
       </section>
 
+      <section class="view" id="view-keys" aria-labelledby="keys-title" hidden>
+        <header class="head">
+          <div class="head-text">
+            <h2 id="keys-title">Teclas</h2>
+            <p class="lede">Troque o que cada tecla faz. O teclado guarda a mudança e ela vale mesmo
+              com o app fechado.</p>
+          </div>
+          <p class="status" role="status" aria-live="polite"></p>
+        </header>
+
+        <div class="segmented layer" id="layer" role="radiogroup" aria-label="Camada">
+          <button type="button" role="radio" data-layer="normal">Normal</button>
+          <button type="button" role="radio" data-layer="fn">Com Fn segurado</button>
+        </div>
+
+        <figure class="stage" id="keymap"></figure>
+
+        <div class="group" id="key-editor"></div>
+
+        <h3 class="group-title" id="changed-title" hidden>Teclas mudadas nesta camada</h3>
+        <div class="group" id="changed-keys" hidden></div>
+
+        <div class="group">
+          <div class="row">
+            <span class="label">Todas as teclas <small>Volta as duas camadas ao original</small></span>
+            <button class="button destructive" type="button" id="keys-reset">Restaurar</button>
+          </div>
+        </div>
+        <p class="note">Na camada Fn, os atalhos do próprio teclado (fitas, multimídia) podem ter
+          prioridade sobre o que for escolhido aqui.</p>
+      </section>
+
+      <section class="view" id="view-macros" aria-labelledby="macros-title" hidden>
+        <header class="head">
+          <div class="head-text">
+            <h2 id="macros-title">Macros</h2>
+            <p class="lede">Grave uma sequência de teclas e depois escolha, em Teclas, qual tecla a dispara.</p>
+          </div>
+          <p class="status" role="status" aria-live="polite"></p>
+        </header>
+
+        <div class="group">
+          <div id="macro-list"></div>
+          <div class="row" id="macro-empty">
+            <span class="label">Nenhuma macro ainda</span>
+          </div>
+          <div class="row">
+            <span class="inline">
+              <button class="button" type="button" id="macro-import">Importar…</button>
+              <button class="button" type="button" id="macro-export">Exportar…</button>
+            </span>
+            <button class="button" type="button" id="macro-new">Nova macro</button>
+          </div>
+        </div>
+
+        <div id="macro-editor" hidden>
+          <div class="group">
+            <div class="row">
+              <label class="label" for="macro-name">Nome</label>
+              <input type="text" id="macro-name" class="text" maxlength="40" spellcheck="false">
+            </div>
+            <div class="row">
+              <label class="label" for="macro-real-delays">Gravar as pausas reais
+                <small>Desligado, usa a pausa fixa entre as ações</small></label>
+              <input type="checkbox" role="switch" id="macro-real-delays" checked>
+            </div>
+            <div class="row">
+              <label class="label" for="macro-fixed-delay">Pausa fixa <small>Em milissegundos (mínimo 10)</small></label>
+              <span class="inline">
+                <input type="number" id="macro-fixed-delay" class="number" min="0" max="65535" value="30" disabled>
+                <button class="button" type="button" id="macro-delays-all">Usar em todas</button>
+              </span>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="row">
+              <span class="label">Ações
+                <small id="macro-recording" hidden>Gravando: aperte as teclas e clique em Parar</small></span>
+              <span class="inline">
+                <select id="macro-mouse" aria-label="Inserir clique do mouse">
+                  <option value="" selected>Inserir clique…</option>
+                  <option value="1">Botão esquerdo</option>
+                  <option value="2">Botão direito</option>
+                  <option value="4">Botão do meio</option>
+                </select>
+                <button class="button" type="button" id="macro-text-open">Inserir texto</button>
+                <button class="button" type="button" id="macro-record">Gravar</button>
+              </span>
+            </div>
+            <div class="row text-entry" id="macro-text-row" hidden>
+              <label class="label" for="macro-text">Texto
+                <small>O teclado digita sozinho, mesmo com o app fechado. Usa o layout de teclado
+                  atual do Windows e a pausa fixa entre as teclas</small></label>
+              <span class="inline nowrap">
+                <textarea id="macro-text" class="text" rows="2" maxlength="400" spellcheck="false"></textarea>
+                <button class="button filled" type="button" id="macro-text-insert">Inserir</button>
+              </span>
+            </div>
+            <p class="row empty" id="macro-events-empty">Clique em Gravar e digite a sequência.</p>
+            <ol class="events" id="macro-events"></ol>
+            <div class="row">
+              <button class="link" type="button" id="macro-clear">Apagar todas as ações</button>
+              <button class="link danger" type="button" id="macro-delete">Excluir macro</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="row">
+            <span class="label"><span id="macro-capacity">Memória do teclado</span>
+              <small id="macro-dirty" hidden>Alterações ainda não gravadas no teclado</small></span>
+            <span class="inline">
+              <meter id="macro-meter" min="0" max="2700" value="0" low="2000" high="2500" optimum="0"></meter>
+              <button class="button filled" type="button" id="macro-save" disabled>Gravar no teclado</button>
+            </span>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
         <header class="head">
           <div class="head-text">
@@ -115,6 +327,88 @@
           </div>
           <p class="status" role="status" aria-live="polite"></p>
         </header>
+
+        <h3 class="group-title">Teclado</h3>
+        <div class="group">
+          <div class="row">
+            <label class="label" for="disable-win">Bloquear a tecla Windows
+              <small>Evita sair do jogo sem querer</small></label>
+            <input type="checkbox" role="switch" id="disable-win">
+          </div>
+          <div class="row">
+            <label class="label" for="disable-altf4">Bloquear Alt + F4</label>
+            <input type="checkbox" role="switch" id="disable-altf4">
+          </div>
+          <div class="row">
+            <label class="label" for="disable-alttab">Bloquear Alt + Tab</label>
+            <input type="checkbox" role="switch" id="disable-alttab">
+          </div>
+          <div class="row">
+            <span class="label" id="fn-mode-label">Tecla Fn
+              <small>Alternar: um toque liga a camada Fn, outro desliga</small></span>
+            <div class="segmented" id="fn-mode" role="radiogroup" aria-labelledby="fn-mode-label">
+              <button type="button" role="radio" data-toggle="false">Segurar</button>
+              <button type="button" role="radio" data-toggle="true">Alternar</button>
+            </div>
+          </div>
+          <div class="row">
+            <label class="label" for="sleep">Suspensão
+              <small>Tempo parado até o teclado dormir. "Nunca" gasta mais bateria no 2.4G</small></label>
+            <select id="sleep"></select>
+          </div>
+          <div class="row">
+            <label class="label" for="response">Tempo de resposta
+              <small>Se uma tecla repetir sozinha, aumente o nível</small></label>
+            <select id="response">
+              <option value="0">Padrão</option>
+              <option value="1">Nível 1 (mais rápido)</option>
+              <option value="2">Nível 2</option>
+              <option value="3">Nível 3</option>
+              <option value="4">Nível 4</option>
+              <option value="5">Nível 5 (mais estável)</option>
+            </select>
+          </div>
+        </div>
+
+        <h3 class="group-title">Perfis</h3>
+        <div class="group">
+          <div id="profile-list"></div>
+          <div class="row">
+            <label class="label" for="profile-name">Novo perfil
+              <small>Começa como cópia do perfil em uso</small></label>
+            <span class="inline nowrap">
+              <input type="text" id="profile-name" class="text short" maxlength="40" spellcheck="false" placeholder="Nome">
+              <button class="button" type="button" id="profile-new">Criar</button>
+            </span>
+          </div>
+        </div>
+        <p class="note">Cada perfil guarda a iluminação, as teclas e as configurações do teclado.
+          Macros e esquemas de cores valem para todos. Troque de perfil aqui, na barra lateral ou na bandeja.</p>
+
+        <h3 class="group-title">App</h3>
+        <div class="group">
+          <div class="row">
+            <label class="label" for="autostart">Iniciar com o Windows
+              <small>Abre escondido na bandeja ao entrar na conta</small></label>
+            <input type="checkbox" role="switch" id="autostart">
+          </div>
+          <div class="row">
+            <label class="label" for="battery-alert">Avisar bateria fraca
+              <small>Notificação do Windows quando o 2.4G chegar a 20%</small></label>
+            <input type="checkbox" role="switch" id="battery-alert">
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="row">
+            <span class="label">Backup
+              <small>Iluminação, cores por tecla, teclas, macros, configurações e perfis num arquivo</small></span>
+            <span class="inline">
+              <button class="button" type="button" id="backup-import">Importar…</button>
+              <button class="button" type="button" id="backup-export">Exportar…</button>
+            </span>
+          </div>
+        </div>
 
         <div class="group">
           <div class="row">
@@ -142,7 +436,7 @@
 
         <div class="group">
           <div class="row">
-            <span class="label">Padrão de fábrica <small>Rolando, arco-íris, brilho 5, velocidade 3</small></span>
+            <span class="label">Padrão de fábrica <small>Iluminação Rolando, sem teclas mudadas e sem macros</small></span>
             <button class="button destructive" type="button" id="reset">Restaurar…</button>
           </div>
         </div>
@@ -160,11 +454,11 @@
 
   <dialog class="alert" id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-text">
     <form method="dialog">
-      <h3 id="confirm-title">Restaurar o padrão de fábrica?</h3>
+      <h3 id="confirm-title"></h3>
       <p id="confirm-text"></p>
       <div class="alert-actions">
         <button class="button" value="cancel" autofocus>Cancelar</button>
-        <button class="button destructive filled" value="confirm">Restaurar</button>
+        <button class="button destructive filled" value="confirm" id="confirm-action">Restaurar</button>
       </div>
     </form>
   </dialog>

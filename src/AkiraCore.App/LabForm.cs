@@ -21,7 +21,8 @@ public sealed class LabForm : Form
 
     // 1. Monitor: reports HID de todas as coleções + teclas via Raw Input
     private HidInputMonitor? _monitor;
-    private RawKeyboardMonitor? _rawKeyboard;
+    private readonly RawKeyboardMonitor _rawKeyboard;
+    private IDisposable? _keyListening;
     private readonly Button _monitorButton = new() { Text = "Iniciar monitor", AutoSize = true };
     private readonly TextBox _markerText = new() { Width = 260, PlaceholderText = "ex.: Fn + Shift direito" };
     private int _markerCount;
@@ -59,10 +60,12 @@ public sealed class LabForm : Form
         Dock = DockStyle.Fill, Font = new Font("Consolas", 9f),
     };
 
-    public LabForm(Func<ExchangeLog?, IKeyboardLink> openLink, Func<LightingConfig> currentLighting)
+    public LabForm(Func<ExchangeLog?, IKeyboardLink> openLink, Func<LightingConfig> currentLighting,
+        RawKeyboardMonitor rawKeyboard)
     {
         _openLink = openLink;
         _currentLighting = currentLighting;
+        _rawKeyboard = rawKeyboard;
         Text = "AKIRA CORE · Laboratório";
         Font = new Font("Segoe UI", 10f);
         var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 800);
@@ -249,9 +252,12 @@ public sealed class LabForm : Form
             ? "Nenhuma coleção HID do teclado encontrada. Ele está conectado por cabo ou dongle?"
             : "Escutando HID:" + Environment.NewLine + string.Join(Environment.NewLine, opened.Select(o => "  " + o)));
 
-        _rawKeyboard = new RawKeyboardMonitor();
-        _rawKeyboard.KeyReceived += Log;
-        Log(_rawKeyboard.Start(Handle)
+        _keyListening = _rawKeyboard.Listen();
+        if (_keyListening is not null)
+        {
+            _rawKeyboard.KeyReceived += LogKey;
+        }
+        Log(_keyListening is not null
             ? "Escutando as teclas do AKIRA (Raw Input)."
             : "Raw Input indisponível: as teclas não serão mostradas.");
         _monitorButton.Text = "Parar monitor";
@@ -261,9 +267,12 @@ public sealed class LabForm : Form
     {
         _monitor?.Dispose();
         _monitor = null;
-        _rawKeyboard?.Dispose();
-        _rawKeyboard = null;
+        _rawKeyboard.KeyReceived -= LogKey;
+        _keyListening?.Dispose();
+        _keyListening = null;
     }
+
+    private void LogKey(RawKey key) => Log(key.Describe());
 
     private void AddMarker()
     {
@@ -274,15 +283,6 @@ public sealed class LabForm : Form
         {
             Log("(o monitor está parado: inicie-o para ver o que o atalho gera)");
         }
-    }
-
-    protected override void WndProc(ref Message m)
-    {
-        if (m.Msg == RawKeyboardMonitor.WindowMessage)
-        {
-            _rawKeyboard?.Process(m.LParam);
-        }
-        base.WndProc(ref m); // DefWindowProc libera o buffer do WM_INPUT
     }
 
     // --- 2 e 3. Bloco experimental e varredura -------------------------------

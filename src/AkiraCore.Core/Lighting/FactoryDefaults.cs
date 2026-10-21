@@ -3,7 +3,9 @@ namespace AkiraCore.Core.Lighting;
 /// <summary>O que a redefinição de fábrica conseguiu fazer no canal atual.</summary>
 public enum FactoryResetScope
 {
-    LightingOnly,      // cabo: só a iluminação padrão (o oficial não tem comando de reset no cabo)
+    // Cabo: o oficial não tem comando de reset; reenvia os padrões. Aqui: macros e teclas
+    // vazias, iluminação e configurações gerais padrão (a parte que este app controla).
+    Defaults,
     DeviceAndLighting, // dongle: reset do firmware (0F) + iluminação padrão
 }
 
