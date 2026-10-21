@@ -42,12 +42,11 @@ public static class HidDeviceFinder
     // VIDs que aparecem no config.xml oficial; usados só no diagnóstico
     private static readonly string[] DiagnosticVendorTags = ["vid_0c45", "vid_05ac"];
 
-    public static HidCollection? FindCommandInterface()
-    {
-        var collections = ListCollections();
-        return collections.FirstOrDefault(c => c.Kind == ChannelKind.Feature)
-               ?? collections.FirstOrDefault(c => c.Kind == ChannelKind.Dongle);
-    }
+    public static HidCollection? FindCommandInterface() => FindCommandInterface(ListCollections());
+
+    public static HidCollection? FindCommandInterface(IReadOnlyList<HidCollection> collections) =>
+        collections.FirstOrDefault(c => c.Kind == ChannelKind.Feature)
+        ?? collections.FirstOrDefault(c => c.Kind == ChannelKind.Dongle);
 
     public static IReadOnlyList<HidCollection> ListCollections()
     {

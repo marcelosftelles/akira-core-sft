@@ -136,6 +136,9 @@ com capstone (sem executar nada). Resultados:
    `04 17`, `04 18`, `04 19`, `04 20`, `04 23`, `04 28`, `04 2B`, `04 72`, `04 F0`, `04 F5`,
    `05 01`, `05 02`, `05 03`, `05 10`, `7F 03`, além de `0F` e `1F` no dongle (reset) e
    `07 10` (configurações gerais no dongle). Nenhum outro comando lateral além do já testado.
+   Correção (20/10/2026): o `04 2B` não é comando. É o atalho Alt + Tab (`04` = Alt,
+   `2B` = Tab) dentro da tabela de remapeamento de `fcn.00418550`. A busca também não pegou
+   `04 11` e `04 27`, que o oficial monta com `cmovne` (ver `docs/protocolo.md`).
 4. **Reset de fábrica oficial** (`fcn.00414870`, textos 167/168, tarefa 14 em `fcn.00434ee0`):
    no cabo não há comando de reset, o app só volta o banco local ao padrão e reenvia tudo
    (macros, teclas, cores por LED, iluminação, configurações gerais). No 2.4G envia o report

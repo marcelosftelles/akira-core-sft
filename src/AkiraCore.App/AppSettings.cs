@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AkiraCore.Core.Presentation;
 
 namespace AkiraCore.App;
 
@@ -14,6 +15,18 @@ public sealed class AppSettings
     public bool SwapRedBlue { get; set; }
     public bool LightOn { get; set; } = true;
     public string SideLightKey { get; set; } = "flowing";
+    // Remapeamento, macros e configurações gerais: o teclado não devolve o que tem gravado
+    // (o oficial também só escreve), então o arquivo é a única referência do que foi configurado
+    public List<KeyAssignmentState> KeyAssignments { get; set; } = [];
+    public List<MacroState> Macros { get; set; } = [];
+    public DeviceSettingsState? Device { get; set; }
+    // Cores por tecla: biblioteca de esquemas e o que está no teclado (null = efeito)
+    public List<CustomLightState> CustomLights { get; set; } = [];
+    public string? CustomLightId { get; set; }
+    // Perfis: os campos acima são o perfil ativo em uso; a lista guarda a cópia de cada um
+    public List<ProfileState> Profiles { get; set; } = [];
+    public string? ActiveProfileId { get; set; }
+    public bool BatteryAlert { get; set; } = true;
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AkiraCore", "settings.json");

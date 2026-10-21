@@ -1,4 +1,7 @@
+using AkiraCore.Core.Device;
+using AkiraCore.Core.Keys;
 using AkiraCore.Core.Lighting;
+using AkiraCore.Core.Macros;
 using AkiraCore.Core.Links;
 using AkiraCore.Core.Protocol;
 
@@ -14,22 +17,35 @@ public sealed class KeyboardClient(IKeyboardLink link)
 
     /// <summary>
     /// Mesmo fluxo da "Redefinição de fábrica" oficial (fcn.00414870 → tarefa 14, fcn.00434ee0),
-    /// na parte que este app controla: no dongle, o reset do firmware (0F); nos dois canais,
-    /// a iluminação padrão. O oficial no cabo também reenvia macros, teclas e funções padrão,
-    /// que este app não mexe.
+    /// na parte que este app controla. No dongle: reset do firmware (0F) e iluminação padrão.
+    /// No cabo, onde não há comando de reset, a ordem do oficial: macros (vazias), teclas das
+    /// duas camadas (sem remapeamento), iluminação e configurações gerais (zeradas, como num
+    /// banco novo). O oficial ainda reenvia cores por LED e luz lateral, que ficam de fora.
     /// </summary>
     /// <param name="swapRedBlue">Mantém a correção de cor local do usuário.</param>
     public FactoryResetScope RestoreFactoryDefaults(bool swapRedBlue = false)
     {
-        var scope = FactoryResetScope.LightingOnly;
+        var lighting = FactoryDefaults.Lighting with { SwapRedBlue = swapRedBlue };
         if (link.HasDeviceFactoryReset)
         {
             link.SendFactoryReset();
-            scope = FactoryResetScope.DeviceAndLighting;
+            ApplyLighting(lighting);
+            return FactoryResetScope.DeviceAndLighting;
         }
-        ApplyLighting(FactoryDefaults.Lighting with { SwapRedBlue = swapRedBlue });
-        return scope;
+
+        ApplyMacros([]);
+        ApplyKeyRemap(new KeyRemapTable(), new KeyRemapTable());
+        ApplyLighting(lighting);
+        ApplyDeviceSettings(DeviceSettings.Default);
+        return FactoryResetScope.Defaults;
     }
+
+    /// <summary>
+    /// Nível da bateria em porcentagem, como o oficial lê (fcn.004357d0). Null quando o canal não
+    /// informa (cabo) ou a resposta não traz nível.
+    /// </summary>
+    public int? ReadBatteryLevel() =>
+        link.HasBatteryQuery ? PacketBuilder.DongleBatteryLevel(link.QueryBattery()) : null;
 
     public void SetSideLight(SideLightMode mode) =>
         link.SendLightBlock(PacketBuilder.SideLightBlock(mode.Value), LightTarget.SideStrips);
@@ -49,6 +65,21 @@ public sealed class KeyboardClient(IKeyboardLink link)
         copy[ProtocolConstants.SignatureIndex + 1] = ProtocolConstants.SignatureHigh;
         link.SendLightBlock(copy, target);
     }
+
+    /// <summary>
+    /// Remapeamento das duas camadas, como a tarefa 6 do oficial (fcn.00434840): normal e depois Fn.
+    /// Tecla sem ação na tabela volta ao comportamento original.
+    /// </summary>
+    public void ApplyKeyRemap(KeyRemapTable normal, KeyRemapTable fn)
+    {
+        link.SendKeyRemap(KeyLayer.Normal, normal.ToBuffer());
+        link.SendKeyRemap(KeyLayer.Fn, fn.ToBuffer());
+    }
+
+    /// <summary>Grava todas as macros; a posição de cada uma é a usada pelas teclas que a disparam.</summary>
+    public void ApplyMacros(IReadOnlyList<Macro> macros) => link.SendMacros(MacroEncoder.Encode(macros));
+
+    public void ApplyDeviceSettings(DeviceSettings settings) => link.SendDeviceSettings(settings.ToBlock());
 
     /// <summary>
     /// Modo personalizado: liga o modo 0x80 e envia a cor de cada LED.

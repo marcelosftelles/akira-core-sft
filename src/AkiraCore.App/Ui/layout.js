@@ -1,7 +1,7 @@
 // Geometria do AKIRA CORE no espaço 800 × 300 do layout oficial.
 // Teclas: rect_left, rect_top, rect_width, rect_height e light_index copiados do
 // layouts/rgb-keyboard.xml do instalador oficial (AKIRA_CORE_Driver 1.0.0.0).
-// Corpo, knob e zonas de luz: medidos na imagem img_keyboard_layout.png do mesmo pacote.
+// Corpo, knob e loading bar: medidos na imagem img_keyboard_layout.png do mesmo pacote.
 
 export const VIEWBOX = { x: 52, y: 0, width: 696, height: 300 };
 
@@ -9,11 +9,13 @@ export const BODY = { x: 60, y: 4, width: 680, height: 290, radius: 16 };
 
 export const KNOB = { cx: 697, cy: 38, r: 17 };
 
-// Zonas que só o teclado controla (atalhos Fn)
+// Zonas que só o teclado controla (atalhos Fn). As fitas laterais ficam nas bordas
+// esquerda e direita do corpo, da fileira dos números até a de baixo (posição
+// indicada pelo usuário no teclado real, 20/10/2026).
 export const ZONES = {
   loadingBar: { x: 671, y: 78, width: 4, height: 30 },
-  leftStrip: { x: 72, y: 289, width: 52, height: 4 },
-  rightStrip: { x: 676, y: 289, width: 52, height: 4 },
+  leftStrip: { x: 58, y: 90, width: 4, height: 146 },
+  rightStrip: { x: 738, y: 90, width: 4, height: 146 },
 };
 
 export const KEYS = [
@@ -100,3 +102,20 @@ export const KEYS = [
   { name: "↓", led: 100, x: 641, y: 240, w: 30, h: 30 },
   { name: "→", led: 102, x: 680, y: 240, w: 30, h: 30 },
 ];
+
+// Scan code (conjunto 1, como o Raw Input entrega; 0xE0xx = prefixo E0) de cada tecla
+// acima, pelo nome. Liga as teclas tocadas no AKIRA à prévia. Fn não tem: o firmware a consome.
+export const SCAN_CODES = {
+  "Esc": 0x01, "F1": 0x3B, "F2": 0x3C, "F3": 0x3D, "F4": 0x3E, "F5": 0x3F, "F6": 0x40,
+  "F7": 0x41, "F8": 0x42, "F9": 0x43, "F10": 0x44, "F11": 0x57, "F12": 0x58, "Del": 0xE053,
+  "~`": 0x29, "!1": 0x02, "@2": 0x03, "#3": 0x04, "$4": 0x05, "%5": 0x06, "^6": 0x07,
+  "&7": 0x08, "*8": 0x09, "(9": 0x0A, ")0": 0x0B, "_-": 0x0C, "+=": 0x0D, "Backspace": 0x0E,
+  "Home": 0xE047, "Tab": 0x0F, "Q": 0x10, "W": 0x11, "E": 0x12, "R": 0x13, "T": 0x14,
+  "Y": 0x15, "U": 0x16, "I": 0x17, "O": 0x18, "P": 0x19, "{[": 0x1A, "}}": 0x1B, "|\\": 0x2B,
+  "end": 0xE04F, "CapsLock": 0x3A, "A": 0x1E, "S": 0x1F, "D": 0x20, "F": 0x21, "G": 0x22,
+  "H": 0x23, "J": 0x24, "K": 0x25, "L": 0x26, ":;": 0x27, "\"'": 0x28, "Enter": 0x1C,
+  "PgUp": 0xE049, "Shift_L": 0x2A, "Z": 0x2C, "X": 0x2D, "C": 0x2E, "V": 0x2F, "B": 0x30,
+  "N": 0x31, "M": 0x32, ",<": 0x33, ".>": 0x34, "/?": 0x35, "Shift_R": 0x36, "↑": 0xE048,
+  "PgDn": 0xE051, "Ctrl_L": 0x1D, "Win_L": 0xE05B, "Alt_L": 0x38, "Space": 0x39,
+  "Alt_R": 0xE038, "Ctrl_R": 0xE01D, "←": 0xE04B, "↓": 0xE050, "→": 0xE04D,
+};

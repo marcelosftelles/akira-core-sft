@@ -4,33 +4,72 @@ using static AkiraCore.App.Hid.NativeMethods;
 
 namespace AkiraCore.App.Hid;
 
+/// <summary>Uma tecla do AKIRA vista pelo Raw Input.</summary>
+/// <param name="ScanCode">Make code do conjunto 1, com 0xE000 somado quando vem com prefixo E0.</param>
+public sealed record RawKey(string DeviceName, int ScanCode, ushort VirtualKey, bool Released)
+{
+    /// <summary>Linha do monitor do Laboratório.</summary>
+    public string Describe()
+    {
+        var e0 = ScanCode >= 0xE000 ? " E0" : "";
+        // Keys é enum de flags: um código não definido viraria uma soma enganosa de nomes
+        var name = Enum.IsDefined((Keys)VirtualKey) ? ((Keys)VirtualKey).ToString() : "?";
+        // VKey 0x10/0x11 é Shift/Ctrl genérico; o make code diz o lado (0x2A esq., 0x36 dir.)
+        return $"{DateTime.Now:HH:mm:ss.fff} TECLA {HidPathInfo.InterfaceLabel(DeviceName)}  " +
+               $"{name} (vk=0x{VirtualKey:X2} make=0x{ScanCode & 0xFF:X2}{e0}) " +
+               (Released ? "solta" : "apertada");
+    }
+}
+
 /// <summary>
-/// Mostra cada tecla que o AKIRA entrega ao PC, via Raw Input. Responde à pergunta
+/// Entrega cada tecla que o AKIRA manda ao PC, via Raw Input. Usado pela prévia (as teclas
+/// tocadas acendem na tela) e pelo monitor do Laboratório, que responde à pergunta
 /// "o atalho das fitas chega ao computador ou o firmware o consome?".
-/// Fn nunca aparece: é tratado dentro do teclado. Se a combinação não gerar
-/// nenhuma linha TECLA, o firmware engoliu tudo e não há o que capturar no PC.
-/// Filtra por VID/PID: teclas de outros teclados são ignoradas.
+/// Fn nunca aparece: é tratado dentro do teclado. Filtra por VID/PID: teclas de outros
+/// teclados são ignoradas.
+/// O Windows aceita um único destino de Raw Input de teclado por processo, por isso há
+/// uma instância só, presa à janela principal, e cada interessado pede uma escuta com
+/// <see cref="Listen"/>: o registro fica ativo enquanto houver alguma.
 /// </summary>
 public sealed class RawKeyboardMonitor : IDisposable
 {
     public const int WindowMessage = WmInput;
 
     private readonly Dictionary<IntPtr, string?> _deviceNames = [];
-    private bool _registered;
+    private IntPtr _window;
+    private int _listeners;
 
-    public event Action<string>? KeyReceived;
+    public event Action<RawKey>? KeyReceived;
 
-    /// <summary>Registra a janela para receber WM_INPUT do teclado, mesmo sem foco.</summary>
-    public bool Start(IntPtr windowHandle)
+    /// <summary>Janela que recebe o WM_INPUT; o WndProc dela chama <see cref="Process"/>.</summary>
+    public void Attach(IntPtr windowHandle) => _window = windowHandle;
+
+    /// <summary>
+    /// Liga a escuta (mesmo com a janela em segundo plano) até o retorno ser descartado.
+    /// Null se o Windows recusar o registro.
+    /// </summary>
+    public IDisposable? Listen()
     {
-        _registered = Register(RidevInputSink, windowHandle);
-        return _registered;
+        if (_listeners == 0 && (_window == IntPtr.Zero || !Register(RidevInputSink, _window)))
+        {
+            return null;
+        }
+        _listeners++;
+        return new Subscription(this);
+    }
+
+    private void Release()
+    {
+        if (_listeners > 0 && --_listeners == 0)
+        {
+            Register(RidevRemove, IntPtr.Zero);
+        }
     }
 
     /// <summary>Chamado pelo WndProc da janela registrada a cada WM_INPUT.</summary>
     public void Process(IntPtr rawInputHandle)
     {
-        if (!_registered)
+        if (_listeners == 0)
         {
             return;
         }
@@ -66,24 +105,13 @@ public sealed class RawKeyboardMonitor : IDisposable
             }
 
             var key = Marshal.PtrToStructure<RawKeyboard>(buffer + (int)headerSize);
-            KeyReceived?.Invoke(Describe(name, key));
+            var scanCode = key.MakeCode | ((key.Flags & RiKeyE0) != 0 ? 0xE000 : 0);
+            KeyReceived?.Invoke(new RawKey(name, scanCode, key.VKey, (key.Flags & RiKeyBreak) != 0));
         }
         finally
         {
             Marshal.FreeHGlobal(buffer);
         }
-    }
-
-    private static string Describe(string deviceName, RawKeyboard key)
-    {
-        var released = (key.Flags & RiKeyBreak) != 0;
-        var e0 = (key.Flags & RiKeyE0) != 0 ? " E0" : "";
-        // Keys é enum de flags: um código não definido viraria uma soma enganosa de nomes
-        var name = Enum.IsDefined((Keys)key.VKey) ? ((Keys)key.VKey).ToString() : "?";
-        // VKey 0x10/0x11 é Shift/Ctrl genérico; o make code diz o lado (0x2A esq., 0x36 dir.)
-        return $"{DateTime.Now:HH:mm:ss.fff} TECLA {HidPathInfo.InterfaceLabel(deviceName)}  " +
-               $"{name} (vk=0x{key.VKey:X2} make=0x{key.MakeCode:X2}{e0}) " +
-               (released ? "solta" : "apertada");
     }
 
     private string? DeviceName(IntPtr device)
@@ -126,10 +154,21 @@ public sealed class RawKeyboardMonitor : IDisposable
 
     public void Dispose()
     {
-        if (_registered)
+        if (_listeners > 0)
         {
             Register(RidevRemove, IntPtr.Zero);
-            _registered = false;
+            _listeners = 0;
+        }
+    }
+
+    private sealed class Subscription(RawKeyboardMonitor owner) : IDisposable
+    {
+        private RawKeyboardMonitor? _owner = owner;
+
+        public void Dispose()
+        {
+            _owner?.Release();
+            _owner = null;
         }
     }
 }

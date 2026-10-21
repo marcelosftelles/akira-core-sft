@@ -48,16 +48,31 @@ public class FactoryResetTests
     }
 
     [Fact]
-    public void CableHasNoResetCommandAndOnlyReappliesDefaultLighting()
+    public void CableHasNoResetCommandAndResendsDefaultsInOfficialOrder()
     {
         var port = new RecordingFeaturePort();
 
         var scope = new KeyboardClient(new FeatureLink(port, new RecordingDelay())).RestoreFactoryDefaults();
 
-        Assert.Equal(FactoryResetScope.LightingOnly, scope);
+        Assert.Equal(FactoryResetScope.Defaults, scope);
+        // fcn.00434ee0: macros (0x43505e) → teclas normal e Fn (0x435070/0x435082)
+        // → iluminação (0x4350ba) → configurações (0x4350d4)
+        var commands = port.Written
+            .Select(r => Convert.ToHexString(r, 0, 3))
+            .Where(h => h.StartsWith("0004"))
+            .ToList();
         Assert.Equal(
-            ["000418", "000413", "000BFF", "000402", "0004F0"],
-            port.Written.Select(r => Convert.ToHexString(r, 0, 3)));
+            ["000419", "000415", "000402",
+             "000418", "000411", "000402", "0004F0",
+             "000418", "000427", "000402", "0004F0",
+             "000418", "000413", "000402", "0004F0",
+             "000418", "000417", "000402"],
+            commands);
+        // Macros vazias: só os cabeçalhos zerados (400 bytes → 8 pacotes)
+        Assert.Equal(8, port.Written[1][9]);
+        // Configurações zeradas: só o 01 fixo e a assinatura
+        var settings = port.Written[^2];
+        Assert.Equal([0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], settings[1..10]);
     }
 
     [Fact]
@@ -67,6 +82,7 @@ public class FactoryResetTests
 
         new KeyboardClient(new FeatureLink(port, new RecordingDelay())).RestoreFactoryDefaults(swapRedBlue: true);
 
-        Assert.Equal([0x00, 0x00, 0xFF], port.Written[2][2..5]);
+        var lightingData = port.Written.FindIndex(r => r[1] == 0x04 && r[2] == 0x13) + 1;
+        Assert.Equal([0x00, 0x00, 0xFF], port.Written[lightingData][2..5]);
     }
 }
