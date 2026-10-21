@@ -14,7 +14,7 @@ namespace AkiraCore.App;
 /// experimentais e localizador de LED.
 /// Só mexe em iluminação: tudo é desfeito reaplicando um efeito normal.
 /// </summary>
-public sealed class LabForm : Form
+public sealed partial class LabForm : Form
 {
     private readonly Func<ExchangeLog?, IKeyboardLink> _openLink;
     private readonly Func<LightingConfig> _currentLighting;
@@ -61,11 +61,16 @@ public sealed class LabForm : Form
     };
 
     public LabForm(Func<ExchangeLog?, IKeyboardLink> openLink, Func<LightingConfig> currentLighting,
-        RawKeyboardMonitor rawKeyboard)
+        RawKeyboardMonitor rawKeyboard, SemaphoreSlim keyboardLock, Live.DongleMusicCalibration calibration,
+        Action<Live.DongleMusicCalibration> saveCalibration, Action restoreLighting)
     {
         _openLink = openLink;
         _currentLighting = currentLighting;
         _rawKeyboard = rawKeyboard;
+        _keyboardLock = keyboardLock;
+        _saveCalibration = saveCalibration;
+        _restoreLighting = restoreLighting;
+        LoadCalibration(calibration);
         Text = "AKIRA CORE · Laboratório";
         Font = new Font("Segoe UI", 10f);
         var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 800);
@@ -91,6 +96,7 @@ public sealed class LabForm : Form
         BuildSweepSection(sections);
         BuildLedSection(sections);
         BuildSnapshotSection(sections);
+        BuildPhase2Section(sections);
 
         var clear = new Button { Text = "Limpar log", AutoSize = true };
         var copy = new Button { Text = "Copiar log", AutoSize = true };

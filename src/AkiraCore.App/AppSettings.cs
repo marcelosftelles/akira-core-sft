@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AkiraCore.Core.Automation;
 using AkiraCore.Core.Presentation;
 
 namespace AkiraCore.App;
@@ -27,6 +28,15 @@ public sealed class AppSettings
     public List<ProfileState> Profiles { get; set; } = [];
     public string? ActiveProfileId { get; set; }
     public bool BatteryAlert { get; set; } = true;
+    // Ao vivo: efeitos calculados no PC (04 20 no cabo, ritmo musical no dongle). Global, fora dos perfis
+    public LiveSettingsState? Live { get; set; }
+    public string LastLiveMode { get; set; } = LiveModes.Music;
+    // Calibração do ritmo musical no dongle, ajustada no Laboratório até o formato ser confirmado
+    public Live.DongleMusicCalibration DongleMusic { get; set; } = new();
+    // Automação do lado do PC
+    public LightRulesState? LightRules { get; set; }
+    public AutoProfileState? AutoProfile { get; set; }
+    public List<HotkeyState> Hotkeys { get; set; } = [];
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AkiraCore", "settings.json");

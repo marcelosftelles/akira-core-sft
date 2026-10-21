@@ -52,9 +52,13 @@ public sealed partial class MainForm
 
     private object ProfilesView() => new
     {
-        list = _settings.Profiles.Select(p => new { id = p.Id, name = p.Name }),
+        list = _settings.Profiles.Select(p => new { id = p.Id, name = p.Name, apps = p.Apps ?? [] }),
         activeId = _settings.ActiveProfileId,
+        auto = _settings.AutoProfile ?? Core.Automation.AutoProfileState.Default,
     };
+
+    private static bool Same<T>(T a, T b) =>
+        System.Text.Json.JsonSerializer.Serialize(a, Json) == System.Text.Json.JsonSerializer.Serialize(b, Json);
 
     private void PostProfiles() => Post(new { type = "profiles", profiles = ProfilesView() });
 
@@ -75,11 +79,24 @@ public sealed partial class MainForm
             PostStatus("error", "Perfil com configuração inválida: " + ex.Message);
             return;
         }
+        var before = CurrentProfileConfig();
         LoadProfileConfig(target.Config);
         _settings.ActiveProfileId = target.Id;
         SaveSettings();
         PostState();
-        if (await SendWholeConfigAsync(includeMacros: false))
+        // Só regrava o que muda de um perfil para o outro: trocar de jogo várias vezes ao dia não
+        // deve gastar a memória do teclado com tabelas iguais
+        var after = CurrentProfileConfig();
+        var keys = Same(before.KeyAssignments, after.KeyAssignments) is false;
+        var device = Same(before.Device, after.Device) is false;
+        var light = Same((before.Lighting, before.LightOn, before.CustomLightId), (after.Lighting, after.LightOn, after.CustomLightId)) is false
+                    && CurrentLive.Mode == Core.Presentation.LiveModes.Off;
+        if (!keys && !device && !light)
+        {
+            PostStatus("ok", $"Perfil {target.Name} em uso");
+            return;
+        }
+        if (await SendWholeConfigAsync(includeMacros: false, keys, device, light))
         {
             PostStatus("ok", $"Perfil {target.Name} aplicado");
         }

@@ -115,6 +115,8 @@ public sealed partial class MainForm
         }
         _settings.CustomLightId = id;
         _settings.LightOn = true;
+        StopLiveForLighting();
+        UpdateLivePause();
         SaveSettings();
         QueueApply();
         PostCustomLights();
@@ -333,18 +335,21 @@ public sealed partial class MainForm
         }
     }
 
-    /// <summary>Regrava tudo que o app controla: depois de importar um backup ou trocar de perfil.</summary>
-    private async Task<bool> SendWholeConfigAsync(bool includeMacros)
+    /// <summary>
+    /// Regrava tudo que o app controla: depois de importar um backup ou trocar de perfil. Na troca de
+    /// perfil, o que é igual ao perfil anterior fica de fora (menos escrita na memória do teclado).
+    /// </summary>
+    private async Task<bool> SendWholeConfigAsync(bool includeMacros, bool keys = true, bool device = true, bool light = true)
     {
         IReadOnlyList<Macro> macros;
         (KeyRemapTable Normal, KeyRemapTable Fn) tables;
-        Core.Device.DeviceSettings device;
+        Core.Device.DeviceSettings settings;
         Action<KeyboardClient> lighting;
         try
         {
             macros = MacroState.ToMacros(_settings.Macros);
             tables = KeyProfile.Build(_settings.KeyAssignments, _settings.Macros);
-            device = CurrentDeviceSettings();
+            settings = CurrentDeviceSettings();
             lighting = CurrentLightingAction();
         }
         catch (Exception ex) when (ex is ArgumentException or FormatException or NullReferenceException)
@@ -358,9 +363,18 @@ public sealed partial class MainForm
             {
                 client.ApplyMacros(macros);
             }
-            client.ApplyKeyRemap(tables.Normal, tables.Fn);
-            client.ApplyDeviceSettings(device);
-            lighting(client);
+            if (keys || includeMacros)
+            {
+                client.ApplyKeyRemap(tables.Normal, tables.Fn);
+            }
+            if (device)
+            {
+                client.ApplyDeviceSettings(settings);
+            }
+            if (light)
+            {
+                lighting(client);
+            }
         });
     }
 }

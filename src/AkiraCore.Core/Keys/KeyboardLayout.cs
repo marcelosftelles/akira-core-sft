@@ -41,8 +41,16 @@ public static class KeyboardLayout
     ];
 
     private static readonly Dictionary<int, PhysicalKey> ByIndexMap = All.ToDictionary(k => k.Index);
+    private static readonly Dictionary<byte, PhysicalKey> ByUsageMap = All.ToDictionary(k => k.Usage);
 
     public static PhysicalKey? ByIndex(int index) => ByIndexMap.GetValueOrDefault(index);
+
+    /// <summary>
+    /// LED da tecla do AKIRA que o Raw Input entregou (scan code do conjunto 1, 0xE0xx com prefixo).
+    /// Usado pelas teclas "acender ao tocar" da luz em tempo real.
+    /// </summary>
+    public static int? LedOfScanCode(int scanCode) =>
+        ScanCodes.ToUsage(scanCode) is { } usage && ByUsageMap.TryGetValue(usage, out var key) ? key.Index : null;
 
     private static PhysicalKey Key(int index, byte usage) =>
         new(index, usage, HidKeys.ByUsage(usage)?.Label ?? throw new InvalidOperationException($"Código 0x{usage:X2} fora do catálogo."));

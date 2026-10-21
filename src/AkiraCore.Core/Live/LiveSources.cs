@@ -393,6 +393,18 @@ public sealed class LiveEngine
         }
     }
 
+    /// <summary>Um aviso está piscando (passa por cima da pausa da luz).</summary>
+    public bool HasAlert
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _alert is not null;
+            }
+        }
+    }
+
     public void ShowAlert(Rgb color, int times)
     {
         lock (_gate)

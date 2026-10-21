@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using AkiraCore.App.Hid;
 using AkiraCore.App.Web;
+using AkiraCore.Core.Automation;
 using AkiraCore.Core;
 using AkiraCore.Core.Device;
 using AkiraCore.Core.Diagnostics;
@@ -65,6 +66,8 @@ public sealed partial class MainForm : Form
         _startHidden = startHidden;
         _lighting = LoadLighting(_settings);
         SanitizeKeyboardSettings(_settings);
+        SanitizeLiveSettings(_settings);
+        SanitizeAutomationSettings(_settings);
         EnsureProfiles();
         _keysSender = new LatestOnly(SendKeysAsync);
         _deviceSender = new LatestOnly(SendDeviceAsync);
@@ -94,6 +97,8 @@ public sealed partial class MainForm : Form
         Resize += (_, _) => UpdatePreviewKeys();
         _rawKeyboard.KeyReceived += OnRawKey;
         SystemEvents.UserPreferenceChanged += OnThemeChanged;
+        InitializeLive();
+        InitializeAutomation();
     }
 
     // --- Ciclo de vida da janela -----------------------------------------------
@@ -106,6 +111,8 @@ public sealed partial class MainForm : Form
         // Também com --hidden: a bandeja mostra a bateria mesmo sem a janela ter aberto
         _batteryTimer.Start();
         _ = RefreshBatteryAsync();
+        StartAutomation();
+        ApplyLive(); // modo ao vivo salvo volta junto com o app
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -148,6 +155,14 @@ public sealed partial class MainForm : Form
         {
             _rawKeyboard.Process(m.LParam);
         }
+        else if (m.Msg == Platform.NativeSystem.WmHotkey)
+        {
+            _hotkeys.Process(m.WParam);
+        }
+        else
+        {
+            _session.Process(m.Msg, m.WParam, m.LParam);
+        }
         base.WndProc(ref m); // DefWindowProc libera o buffer do WM_INPUT
     }
 
@@ -158,6 +173,8 @@ public sealed partial class MainForm : Form
     private void UpdatePreviewKeys()
     {
         var wanted = _webReady && Visible && WindowState != FormWindowState.Minimized;
+        _liveRunner.PreviewWanted = wanted;
+        UpdateMirror();
         if (wanted && _previewKeys is null)
         {
             _previewKeys = _rawKeyboard.Listen();
@@ -171,6 +188,7 @@ public sealed partial class MainForm : Form
 
     private void OnRawKey(RawKey key)
     {
+        PressLiveKey(key);
         // Só a posição vai para a página, para acender a tecla na prévia; nada é guardado
         if (_previewKeys is not null)
         {
@@ -287,9 +305,10 @@ public sealed partial class MainForm : Form
                 case "apply":
                     if (AcceptLighting(message))
                     {
-                        // Escolher ou ajustar um efeito sai das cores por tecla
+                        // Escolher ou ajustar um efeito sai das cores por tecla e do modo ao vivo
                         _settings.LightOn = true;
                         _settings.CustomLightId = null;
+                        StopLiveForLighting();
                         QueueApply();
                         PostCustomLights();
                     }
@@ -298,6 +317,7 @@ public sealed partial class MainForm : Form
                     if (AcceptLighting(message))
                     {
                         _settings.LightOn = message.GetProperty("on").GetBoolean();
+                        UpdateLivePause();
                         QueueApply();
                     }
                     break;
@@ -323,7 +343,11 @@ public sealed partial class MainForm : Form
                     OpenLab();
                     break;
                 default:
-                    HandleLibraryMessage(message);
+                    var type = message.GetProperty("type").GetString();
+                    if (!HandleLiveMessage(type, message) && !HandleAutomationMessage(type, message))
+                    {
+                        HandleLibraryMessage(message);
+                    }
                     break;
             }
         }
@@ -565,6 +589,9 @@ public sealed partial class MainForm : Form
         },
         customLights = CustomLightsView(),
         profiles = ProfilesView(),
+        live = LiveView(),
+        automation = AutomationView(),
+        mirror = _mirrorWanted,
     });
 
     private void PostDevice() => Post(new { type = "device", device = DeviceInfo() });
@@ -744,18 +771,25 @@ public sealed partial class MainForm : Form
     /// <exception cref="FormatException">Cor que não é #RRGGBB.</exception>
     private Action<KeyboardClient> CurrentLightingAction()
     {
-        if (!_settings.LightOn)
+        // Regras de luz (bloqueio, tela, horário) passam por cima sem mudar o que está configurado
+        if (!_settings.LightOn || _lightOverride == LightOverride.Off)
         {
             var off = new LightingConfig(EffectCatalog.Off, default);
             return client => client.ApplyLighting(off);
         }
+        var dim = _lightOverride == LightOverride.Dim;
         if (ActiveCustomLight() is { } scheme)
         {
             var frame = scheme.ToFrame(_settings.SwapRedBlue);
-            var brightness = scheme.Brightness;
+            var brightness = dim ? Math.Min(LightRules.DimBrightness, scheme.Brightness) : scheme.Brightness;
             return client => client.ApplyPerKeyColors(frame, brightness);
         }
         var config = CurrentConfig();
+        if (dim)
+        {
+            config = new LightingConfig(config.Effect, config.Color, Math.Min(LightRules.DimBrightness, config.Brightness),
+                config.Speed, config.Direction, config.Rainbow) { SwapRedBlue = config.SwapRedBlue };
+        }
         return client => client.ApplyLighting(config);
     }
 
@@ -768,6 +802,7 @@ public sealed partial class MainForm : Form
         }
         // Nos dois canais o teclado fica sem teclas remapeadas, sem macros e com as
         // configurações padrão (dongle: o próprio firmware apaga; cabo: o app reenviou)
+        StopLiveForLighting();
         _lighting = LightingState.From(FactoryDefaults.Lighting);
         _settings.LightOn = true;
         _settings.CustomLightId = null;
@@ -811,6 +846,7 @@ public sealed partial class MainForm : Form
             case "swapRedBlue":
                 _settings.SwapRedBlue = value;
                 SaveSettings();
+                ApplyLive(); // o fluxo ao vivo e o espelho usam a mesma correção
                 if (_settings.LightOn)
                 {
                     QueueApply(); // a correção muda as cores no teclado na hora
@@ -818,6 +854,8 @@ public sealed partial class MainForm : Form
                 break;
             case "simulate":
                 _simulate = value;
+                UpdateLivePause();
+                UpdateMirror();
                 PostDevice();
                 break;
             case "batteryAlert":
@@ -849,6 +887,7 @@ public sealed partial class MainForm : Form
         _settings.Rainbow = _lighting.Rainbow;
         SyncActiveProfile();
         _settings.Save();
+        RegisterAppKeys(); // teclas com ação do app podem ter mudado (teclas, perfil, backup)
     }
 
     /// <param name="trace">Se informado, guarda as respostas completas do teclado (Laboratório).</param>
@@ -889,7 +928,14 @@ public sealed partial class MainForm : Form
             _labForm.Activate();
             return;
         }
-        _labForm = new LabForm(OpenLink, CurrentConfig, _rawKeyboard);
+        _labForm = new LabForm(OpenLink, CurrentConfig, _rawKeyboard, _keyboardLock, _settings.DongleMusic,
+            calibration =>
+            {
+                _settings.DongleMusic = calibration.Sanitized();
+                SaveSettings();
+                ApplyLive();
+            },
+            () => QueueApply());
         _labForm.Show(this);
     }
 
@@ -920,6 +966,7 @@ public sealed partial class MainForm : Form
     private void SetLightFromTray(bool on)
     {
         _settings.LightOn = on;
+        UpdateLivePause();
         PostState();
         QueueApply();
     }
@@ -947,6 +994,16 @@ public sealed partial class MainForm : Form
         if (disposing)
         {
             SystemEvents.UserPreferenceChanged -= OnThemeChanged;
+            _commandCancel.Cancel();
+            _liveRunner.Dispose();
+            _mirror.Dispose();
+            _liveKeys?.Dispose();
+            _countdownWatch.Dispose();
+            _hotkeys.Dispose();
+            _foreground.Dispose();
+            _session.Dispose();
+            _rulesTimer.Dispose();
+            _foregroundDebounce.Dispose();
             _deviceTimer.Dispose();
             _batteryTimer.Dispose();
             _keyboardLock.Dispose();
