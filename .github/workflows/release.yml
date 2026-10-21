@@ -1,0 +1,54 @@
+# Gera o AkiraCore.exe e publica na release do GitHub.
+# Dispara ao enviar uma tag "v*" (ex.: git tag v0.1.0 && git push origin v0.1.0)
+# ou manualmente pela aba Actions, informando a tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release (ex.: v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Testes
+        run: dotnet test -c Release
+
+      # Arquivo único e autocontido: não precisa do .NET instalado na máquina do usuário.
+      # Só o WebView2 Runtime, que já vem no Windows 10/11 atualizado.
+      - name: Publicar executável
+        shell: pwsh
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          dotnet publish src/AkiraCore.App -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=none `
+            -p:Version=$version -o publish
+          Get-FileHash publish/AkiraCore.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  AkiraCore.exe" } |
+            Out-File publish/AkiraCore.exe.sha256 -Encoding ascii
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: AkiraCore ${{ env.TAG }}
+          generate_release_notes: true
+          files: |
+            publish/AkiraCore.exe
+            publish/AkiraCore.exe.sha256
