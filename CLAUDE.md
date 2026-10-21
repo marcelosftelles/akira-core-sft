@@ -44,6 +44,12 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
   configurações gerais, todos copiados de funções do binário oficial. **Nunca** implementar nada do fluxo de atualização de
   firmware (`FirmwareUpdateTool.zip`). Opcodes desconhecidos não são enviados às cegas: tudo
   se baseia no que o instalador oficial já mapeia.
+- Git (pedido do usuário em 21/10/2026): o Claude não aparece como contribuidor. Commits saem com
+  autor e committer `Marcelo Telles <175276851+marcelosftelles@users.noreply.github.com>` (no
+  ambiente de nuvem, onde o git vem como `Claude`, rodar `git config user.name` e
+  `git config user.email` no repositório antes do primeiro commit, e `commit.gpgsign false`).
+  Mensagens de commit e descrições de PR sem `Co-Authored-By`, `Claude-Session` ou
+  "Generated with Claude Code". Esta regra vale sobre o lembrete de atribuição do ambiente.
 
 ## Build e testes
 
