@@ -99,6 +99,90 @@ public sealed class FeatureLink(IFeaturePort port, IDelay? delay = null) : IKeyb
     public byte[] QueryBattery() =>
         throw new NotSupportedException("O app oficial só lê a bateria pelo dongle.");
 
+    public bool HasStreaming => true;
+
+    public void SendStreamFrame(ReadOnlySpan<byte> frame)
+    {
+        // fcn.00427f60 → fcn.0044ef50: 04 20 com [8] = 8 (ACK) → 8 pacotes sem ACK → 04 02 (ACK).
+        // Ritmo da função rápida (5 ms), não o da transação normal (35 ms).
+        if (frame.Length != StreamProtocol.FrameLength)
+        {
+            throw new ArgumentException($"O quadro precisa ter {StreamProtocol.FrameLength} bytes.", nameof(frame));
+        }
+        var chunks = PacketBuilder.FeatureChunks(frame);
+        var pause = StreamProtocol.PacketDelay;
+        SendFast(PacketBuilder.FeatureCommand(Opcode.Stream, StreamProtocol.FramePackets), StreamProtocol.AckReads, pause);
+        foreach (var chunk in chunks)
+        {
+            SendFast(chunk, ackReads: 0, pause);
+        }
+        SendFast(PacketBuilder.FeatureCommand(Opcode.End), StreamProtocol.AckReads, pause);
+    }
+
+    public bool HasColorReadback => true;
+
+    public byte[] ReadLedColors()
+    {
+        // fcn.0042adb0: 04 F5 com [8] = 9 → ACK (até 10 leituras de 5 ms) → 9 GET_REPORT → 04 02.
+        // Não abre a transação com 04 18.
+        var pause = ReadColorsProtocol.PacketDelay;
+        SendFast(PacketBuilder.FeatureCommand(Opcode.ReadColors, ReadColorsProtocol.Packets),
+            ReadColorsProtocol.AckReads, pause);
+        var buffer = new byte[ReadColorsProtocol.Packets * FeatureProtocol.PayloadLength];
+        for (var packet = 0; packet < ReadColorsProtocol.Packets; packet++)
+        {
+            _delay.Wait(pause);
+            var report = port.GetFeature(FeatureProtocol.ReportLength)
+                         ?? throw new KeyboardException("O teclado não devolveu as cores dos LEDs (USB).");
+            report.AsSpan(1, Math.Min(FeatureProtocol.PayloadLength, report.Length - 1))
+                .CopyTo(buffer.AsSpan(packet * FeatureProtocol.PayloadLength));
+        }
+        // O fechamento não decide nada: as cores já chegaram
+        _delay.Wait(pause);
+        if (port.SetFeature(PacketBuilder.FeatureCommand(Opcode.End)))
+        {
+            _delay.Wait(pause);
+            port.GetFeature(FeatureProtocol.ReportLength);
+        }
+        return buffer;
+    }
+
+    // O ritmo musical do cabo é desenhado pelo app e vai pelo 04 20 (fcn.004328c0)
+    public bool HasMusicReport => false;
+
+    public void SendMusicReport(byte[] report) =>
+        throw new NotSupportedException("No cabo o ritmo musical vai pelo quadro em tempo real.");
+
+    public bool HasKeyboardReset => false;
+
+    public void SendKeyboardReset() =>
+        throw new NotSupportedException("No cabo o \"Reset Keyboard\" do oficial só regrava as tabelas de teclas.");
+
+    /// <summary>Envio da função rápida (fcn.0044ef50): pausa curta e ACK lido várias vezes.</summary>
+    private void SendFast(byte[] report, int ackReads, TimeSpan pause)
+    {
+        _delay.Wait(pause);
+        if (!port.SetFeature(report))
+        {
+            throw new KeyboardException($"Falha ao enviar {report[1]:X2} {report[2]:X2} (USB).");
+        }
+        if (ackReads == 0)
+        {
+            return;
+        }
+        for (var attempt = 0; attempt < ackReads; attempt++)
+        {
+            _delay.Wait(pause);
+            var response = port.GetFeature(FeatureProtocol.ReportLength);
+            if (response is not null && response.Length > FeatureProtocol.AckIndex
+                                     && response[FeatureProtocol.AckIndex] == 1)
+            {
+                return;
+            }
+        }
+        throw new KeyboardException($"O teclado não confirmou o comando {report[1]:X2} {report[2]:X2} (USB).");
+    }
+
     private void Run(IEnumerable<(byte[] Report, bool WaitAck)> steps)
     {
         foreach (var (report, waitAck) in steps)

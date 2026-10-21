@@ -196,6 +196,58 @@ public static class PacketBuilder
         return level == 0 ? null : Math.Min((int)level, BatteryProtocol.MaxLevel);
     }
 
+    /// <summary>
+    /// Ritmo musical no dongle (fcn.00432b00): 0B 1C 00, modo de frente, modo de fundo, brilho e
+    /// a altura de cada coluna. Colunas que sobram ficam zeradas.
+    /// </summary>
+    public static byte[] DongleMusic(byte frontMode, byte backMode, byte brightness, ReadOnlySpan<byte> heights)
+    {
+        if (heights.Length > MusicProtocol.MaxColumns)
+        {
+            throw new ArgumentException($"O report do dongle cabe no máximo {MusicProtocol.MaxColumns} colunas.",
+                nameof(heights));
+        }
+        var header = MusicProtocol.DongleHeader;
+        var content = new byte[header.Length + MusicProtocol.ContentLength];
+        header.CopyTo(content, 0);
+        var data = content.AsSpan(header.Length);
+        data[MusicProtocol.FrontModeOffset] = frontMode;
+        data[MusicProtocol.BackModeOffset] = backMode;
+        data[MusicProtocol.BrightnessOffset] = brightness;
+        heights.CopyTo(data[MusicProtocol.HeightsOffset..]);
+        return DongleReport(content);
+    }
+
+    /// <summary>"Reset Keyboard" do oficial no 2.4G (fcn.00414600): report só com 1F.</summary>
+    public static byte[] DongleKeyboardReset() => DongleReport([DongleProtocol.KeyboardResetCommand]);
+
+    /// <summary>
+    /// Cores lidas pelo 04 F5 (fcn.0042adb0): a mesma tabela do 04 23, com o LED i em i × 4 como
+    /// [i, R, G, B]. Valem as posições cujo primeiro byte é o próprio índice (posição zerada é LED
+    /// que o firmware não usa). Se nenhuma posição trouxer o índice, o firmware devolveu só as
+    /// cores: aí vale a posição.
+    /// </summary>
+    public static IReadOnlyDictionary<int, Lighting.Rgb> ParseLedColors(ReadOnlySpan<byte> buffer)
+    {
+        var colors = new Dictionary<int, Lighting.Rgb>();
+        var positional = new Dictionary<int, Lighting.Rgb>();
+        for (var index = 1; index <= PerKeyProtocol.MaxLedIndex; index++)
+        {
+            var offset = index * 4;
+            if (offset + 3 >= buffer.Length)
+            {
+                break;
+            }
+            var color = new Lighting.Rgb(buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]);
+            positional[index] = color;
+            if (buffer[offset] == index)
+            {
+                colors[index] = color;
+            }
+        }
+        return colors.Count > 0 ? colors : positional;
+    }
+
     /// <summary>O dongle confirma ecoando os 3 bytes de cabeçalho.</summary>
     public static bool IsDongleEcho(ReadOnlySpan<byte> response, ReadOnlySpan<byte> sentReport) =>
         response.Length > 3 && response.Slice(1, 3).SequenceEqual(sentReport.Slice(1, 3));

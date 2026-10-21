@@ -7,8 +7,10 @@ namespace AkiraCore.Core.Presentation;
 
 /// <summary>
 /// Uma tecla remapeada, como a tela guarda. <see cref="Action"/> é "disabled", "key", "media",
-/// "mouse" ou "macro"; os outros campos só valem para o tipo correspondente. A macro é
+/// "mouse", "macro" ou "app"; os outros campos só valem para o tipo correspondente. A macro é
 /// referenciada pelo id, porque a posição dela na lista muda quando outra é apagada.
+/// Em "app", <see cref="App"/> é o tipo (ver <see cref="AppKeyActions"/>) e <see cref="Target"/>
+/// o programa, o site, o texto ou a tecla multimídia.
 /// </summary>
 public sealed record KeyAssignmentState(
     int Key,
@@ -20,8 +22,12 @@ public sealed record KeyAssignmentState(
     string? Mouse = null,
     string? MacroId = null,
     string? Playback = null,
-    int Repeat = 0)
+    int Repeat = 0,
+    string? App = null,
+    string? Target = null)
 {
+    public const string AppAction = "app";
+
     public KeyLayer ToLayer() => Layer switch
     {
         "normal" => KeyLayer.Normal,
@@ -29,14 +35,16 @@ public sealed record KeyAssignmentState(
         _ => throw new ArgumentException($"Camada desconhecida: {Layer}."),
     };
 
+    /// <param name="binding">Atalho reservado para a tecla, quando a ação é do app.</param>
     /// <exception cref="ArgumentException">Ação incompleta, valor fora da faixa ou macro inexistente.</exception>
-    public KeyAction ToAction(IReadOnlyList<MacroState> macros) => Action switch
+    public KeyAction ToAction(IReadOnlyList<MacroState> macros, AppKeyBinding? binding = null) => Action switch
     {
         "disabled" => DisabledKeyAction.Instance,
         "key" => new KeyComboAction(ToModifiers(Modifiers), ToByte(Usage, "tecla")),
         "media" => new MediaKeyAction(KeyOptions.ParseMedia(Media)),
         "mouse" => new MouseKeyAction(KeyOptions.ParseMouse(Mouse)),
         "macro" => new MacroKeyAction(MacroPosition(macros), KeyOptions.ParsePlayback(Playback), Repeat),
+        AppAction => binding?.ToKeyAction() ?? throw new ArgumentException("Tecla com ação do app sem atalho reservado."),
         _ => throw new ArgumentException($"Ação desconhecida: {Action}."),
     };
 
@@ -69,14 +77,21 @@ public static class KeyProfile
         var normal = new KeyRemapTable();
         var fn = new KeyRemapTable();
         var seen = new HashSet<(int, KeyLayer)>();
-        foreach (var assignment in assignments)
+        var list = assignments.ToList();
+        var bindings = new Dictionary<(int, string), AppKeyBinding>();
+        foreach (var binding in AppKeyActions.Allocate(list))
+        {
+            bindings.TryAdd((binding.Assignment.Key, binding.Assignment.Layer), binding);
+        }
+        foreach (var assignment in list)
         {
             var layer = assignment.ToLayer();
             if (!seen.Add((assignment.Key, layer)))
             {
                 throw new ArgumentException($"A tecla {assignment.Key} aparece duas vezes na mesma camada.");
             }
-            (layer == KeyLayer.Fn ? fn : normal).Set(assignment.Key, assignment.ToAction(macros));
+            (layer == KeyLayer.Fn ? fn : normal).Set(assignment.Key,
+                assignment.ToAction(macros, bindings.GetValueOrDefault((assignment.Key, assignment.Layer))));
         }
         return (normal, fn);
     }
@@ -226,6 +241,9 @@ public static class KeysCatalogView
         mouse = KeyOptions.Mouse.Select(o => new { key = o.Key, label = o.Label }),
         playback = KeyOptions.Playback.Select(o => new { key = o.Key, label = o.Label }),
         sleep = KeyOptions.Sleep.Select(o => new { key = o.Key, label = o.Label }),
+        appActions = AppKeyActions.Kinds.Select(o => new { key = o.Key, label = o.Label, target = o.Value }),
+        appMedia = AppKeyActions.MediaKeys.Select(o => new { key = o.Key, label = o.Label }),
+        maxAppKeys = AppKeyBinding.Capacity,
         maxMacros = Protocol.MacroProtocol.SlotCount,
         macroCapacity = Protocol.MacroProtocol.SizeLimit,
     };

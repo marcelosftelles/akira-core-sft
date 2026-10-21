@@ -58,6 +58,37 @@ public sealed class DongleLink(IReportPort port, IDelay? delay = null) : IKeyboa
     // fcn.004357d0: mesma transação dos outros comandos; o nível vem no eco
     public byte[] QueryBattery() => SendReport(PacketBuilder.DongleBatteryQuery());
 
+    // O 04 20 é só do cabo: o oficial não tem luz em tempo real no 2.4G (custom_light só no menu do cabo)
+    public bool HasStreaming => false;
+
+    public void SendStreamFrame(ReadOnlySpan<byte> frame) =>
+        throw new NotSupportedException("O quadro em tempo real só existe no cabo.");
+
+    public bool HasColorReadback => false;
+
+    public byte[] ReadLedColors() =>
+        throw new NotSupportedException("O oficial só lê as cores dos LEDs pelo cabo.");
+
+    public bool HasMusicReport => true;
+
+    // fcn.00432b00: mesma transação dos outros reports (eco do cabeçalho)
+    public void SendMusicReport(byte[] report)
+    {
+        if (report.Length != DongleProtocol.ReportLength || !report.AsSpan(1, 3).SequenceEqual(MusicProtocol.DongleHeader))
+        {
+            throw new ArgumentException("Report de ritmo musical inválido.", nameof(report));
+        }
+        SendReport(report);
+    }
+
+    public bool HasKeyboardReset => true;
+
+    public void SendKeyboardReset()
+    {
+        SendReport(PacketBuilder.DongleKeyboardReset());
+        _delay.Wait(DongleProtocol.FactoryResetSettleDelay);
+    }
+
     /// <summary>Envia e espera o eco; devolve o report de confirmação inteiro.</summary>
     private byte[] SendReport(byte[] report)
     {

@@ -36,4 +36,28 @@ public interface IKeyboardLink : IDisposable
 
     /// <summary>Pergunta o nível da bateria e devolve a resposta inteira, com Report ID no índice 0.</summary>
     byte[] QueryBattery();
+
+    /// <summary>O canal aceita quadros em tempo real (04 20, só o cabo).</summary>
+    bool HasStreaming { get; }
+
+    /// <summary>Envia um quadro de 512 bytes direto aos LEDs, sem gravar na memória do teclado.</summary>
+    void SendStreamFrame(ReadOnlySpan<byte> frame);
+
+    /// <summary>O canal devolve as cores que os LEDs mostram (04 F5, só o cabo).</summary>
+    bool HasColorReadback { get; }
+
+    /// <summary>Lê a tabela de 576 bytes com a cor atual de cada LED.</summary>
+    byte[] ReadLedColors();
+
+    /// <summary>O firmware desenha o ritmo musical a partir das alturas (0B, só o dongle).</summary>
+    bool HasMusicReport { get; }
+
+    /// <summary>Envia o report de ritmo musical já montado (<see cref="PacketBuilder.DongleMusic"/>).</summary>
+    void SendMusicReport(byte[] report);
+
+    /// <summary>O canal tem o "Reset Keyboard" do firmware (1F, só o dongle).</summary>
+    bool HasKeyboardReset { get; }
+
+    /// <summary>Envia o 1F do oficial. Sem teste em hardware: só o Laboratório usa.</summary>
+    void SendKeyboardReset();
 }

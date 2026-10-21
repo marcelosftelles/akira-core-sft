@@ -1,6 +1,7 @@
 using AkiraCore.Core.Device;
 using AkiraCore.Core.Keys;
 using AkiraCore.Core.Lighting;
+using AkiraCore.Core.Live;
 using AkiraCore.Core.Macros;
 using AkiraCore.Core.Links;
 using AkiraCore.Core.Protocol;
@@ -46,6 +47,34 @@ public sealed class KeyboardClient(IKeyboardLink link)
     /// </summary>
     public int? ReadBatteryLevel() =>
         link.HasBatteryQuery ? PacketBuilder.DongleBatteryLevel(link.QueryBattery()) : null;
+
+    /// <summary>Quadro do fluxo em tempo real (04 20, só cabo). Vai direto aos LEDs, sem gravar.</summary>
+    public void SendLiveFrame(LiveFrame frame, bool swapRedBlue = false) =>
+        link.SendStreamFrame(frame.ToStreamFrame(swapRedBlue));
+
+    /// <summary>
+    /// Cores que os LEDs mostram agora (04 F5, fcn.0042adb0). Null no dongle, que não tem a leitura.
+    /// </summary>
+    public IReadOnlyDictionary<int, Rgb>? ReadLedColors(bool swapRedBlue = false)
+    {
+        if (!link.HasColorReadback)
+        {
+            return null;
+        }
+        var colors = PacketBuilder.ParseLedColors(link.ReadLedColors());
+        return swapRedBlue ? colors.ToDictionary(c => c.Key, c => ColorMath.SwapRedBlue(c.Value)) : colors;
+    }
+
+    /// <summary>
+    /// Ritmo musical desenhado pelo firmware do dongle (fcn.00432b00). As alturas já vêm na escala
+    /// e no número de colunas escolhidos (ver <see cref="MusicProtocol"/>).
+    /// </summary>
+    public void SendMusicHeights(ReadOnlySpan<byte> heights, int brightness, byte frontMode = 0, byte backMode = 0)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(brightness, 0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(brightness, ProtocolConstants.BrightnessMax);
+        link.SendMusicReport(PacketBuilder.DongleMusic(frontMode, backMode, (byte)brightness, heights));
+    }
 
     public void SetSideLight(SideLightMode mode) =>
         link.SendLightBlock(PacketBuilder.SideLightBlock(mode.Value), LightTarget.SideStrips);

@@ -49,6 +49,65 @@ public enum Opcode : byte
     DeviceSettings = 0x17, // fcn.004141a0
     MacroBegin = 0x19,     // fcn.0042d5d0; abre a gravação de macros sem o 04 18
     MacroData = 0x15,      // fcn.0042d5d0; [8] = nº de pacotes de 64 bytes
+    Stream = 0x20,         // fcn.00427f60 (luz em tempo real) e fcn.004328c0 (música no cabo)
+    ReadColors = 0xF5,     // fcn.0042adb0 (espelho dos LEDs); só leitura, sem 04 18
+}
+
+/// <summary>
+/// Fluxo em tempo real do cabo (04 20). O oficial usa nos modos contínuos 6 (luz personalizada,
+/// fcn.00427f60) e 7 (ritmo musical, fcn.004328c0): 04 20 com [8] = 8 → 8 pacotes de 64 bytes
+/// pela função rápida fcn.0044ef50 (Sleep(5) entre pacotes) → 04 02. Sem 04 18 e sem 04 F0:
+/// nada vai para a memória do teclado, só para os LEDs.
+/// O quadro de 0x200 bytes é uma lista corrida de [índice, R, G, B], sem lacunas, e zeros no
+/// resto. O Ghidra descartou os blocos que montam o quadro no binário do AKIRA; o formato vem
+/// das capturas USB do app oficial da plataforma irmã (AULA F108 Pro, mesmo envio com
+/// 0x60 a 0x70 de deslocamento): Punkster81/AULA-F108-Driver e o controlador AulaF108Pro do
+/// OpenRGB, que concordam entre si e com o tamanho e a contagem lidos aqui.
+/// A variante [8] = 3 com 0xC0 bytes é a dos teclados monocromáticos, como no 04 F5.
+/// </summary>
+public static class StreamProtocol
+{
+    public const int FrameLength = 0x200;
+    public const int FramePackets = 8;
+    public const int EntryLength = 4;
+    public const int MaxEntries = FrameLength / EntryLength;
+    public static readonly TimeSpan PacketDelay = TimeSpan.FromMilliseconds(5);
+    // fcn.0044ef50 espera o ACK por até 100 ms, lendo a cada 5 ms
+    public const int AckReads = 20;
+}
+
+/// <summary>
+/// Leitura das cores dos LEDs (04 F5, fcn.0042adb0, só no cabo). O oficial roda no modo
+/// contínuo 3 para pintar o desenho com o que o teclado mostra de verdade:
+/// 04 F5 com [8] = 9 → ACK (até 10 leituras, 5 ms) → 9 GET_REPORT de 64 bytes → 04 02.
+/// A resposta é a mesma tabela de 576 bytes do 04 23: [índice, R, G, B] em índice × 4.
+/// </summary>
+public static class ReadColorsProtocol
+{
+    public const int Packets = 9;
+    public const int AckReads = 10;
+    public static readonly TimeSpan PacketDelay = TimeSpan.FromMilliseconds(5);
+}
+
+/// <summary>
+/// Ritmo musical no dongle (fcn.00432b00): report 0B 1C 00 com 28 bytes de conteúdo.
+/// [4] modo de frente, [5] modo de fundo, [6] brilho e, a partir de [7], a altura de cada coluna
+/// (índices com o Report ID). O firmware desenha as barras; o app só manda as alturas.
+/// Ainda sem confirmação no binário: quantas colunas o oficial preenche e a escala da altura.
+/// Por isso as duas coisas são parâmetros (Laboratório) e os padrões são a matriz de LEDs do
+/// layout oficial (18 colunas) e a altura em fileiras (0 a 6).
+/// </summary>
+public static class MusicProtocol
+{
+    public static readonly byte[] DongleHeader = [0x0B, 0x1C, 0x00];
+    public const int ContentLength = 0x1C;
+    public const int FrontModeOffset = 0;   // [4] do report
+    public const int BackModeOffset = 1;    // [5]
+    public const int BrightnessOffset = 2;  // [6]
+    public const int HeightsOffset = 3;     // [7] em diante
+    public const int MaxColumns = ContentLength - HeightsOffset;
+    public const int DefaultColumns = 18;
+    public const int DefaultMaxHeight = 6;
 }
 
 /// <summary>Camada do remapeamento: a normal ou a ativa enquanto o Fn está segurado.</summary>
@@ -148,6 +207,11 @@ public static class DongleProtocol
     // comando equivalente: o app oficial só reenvia os padrões.
     public const byte FactoryResetCommand = 0x0F;
     public static readonly TimeSpan FactoryResetSettleDelay = TimeSpan.FromMilliseconds(50);
+    // "Reset Keyboard" oficial (fcn.00414600, textos 165/166; item 0xd do laço fcn.00434230):
+    // no 2.4G é o report 1F; no cabo o mesmo botão roda a tarefa 6 (fcn.00434840), que regrava
+    // as duas tabelas de teclas. Hipótese mais provável: 1F zera o remapeamento no firmware.
+    // Sem teste em hardware: só o Laboratório envia.
+    public const byte KeyboardResetCommand = 0x1F;
     public const int ChecksumIndex = 32;     // soma dos bytes anteriores, 8 bits
     public const int ReadAttempts = 20;
     public static readonly TimeSpan WriteRetryDelay = TimeSpan.FromMilliseconds(10);

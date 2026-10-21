@@ -42,7 +42,11 @@ public sealed record ProfileConfigState(
     }
 }
 
-public sealed record ProfileState(string Id, string Name, ProfileConfigState Config)
+/// <summary>
+/// Um perfil. <see cref="Apps"/> são os programas (ex.: valorant.exe) que trocam para ele sozinhos,
+/// como a coluna "app" de t_profile_data do oficial; vazio = só troca à mão.
+/// </summary>
+public sealed record ProfileState(string Id, string Name, ProfileConfigState Config, IReadOnlyList<string>? Apps = null)
 {
     public const int NameMaxLength = 40;
     public const int MaxProfiles = 20;
@@ -69,6 +73,7 @@ public sealed record ProfileState(string Id, string Name, ProfileConfigState Con
             ValidateName(profile.Name);
             (profile.Config ?? throw new ArgumentException("Perfil sem configuração.")).Validate(macros, customLights);
         }
+        Automation.ProfileApps.ValidateAll(profiles);
     }
 
     /// <exception cref="ArgumentException">Nome vazio ou longo demais.</exception>
