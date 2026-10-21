@@ -37,6 +37,7 @@
 
       <ul class="nav nav-bottom">
         <li><button class="nav-item" type="button" data-view="colors">Cores por tecla</button></li>
+        <li><button class="nav-item" type="button" data-view="live">Ao vivo</button></li>
         <li><button class="nav-item" type="button" data-view="keys">Teclas</button></li>
         <li><button class="nav-item" type="button" data-view="macros">Macros</button></li>
         <li><button class="nav-item" type="button" data-view="strips">Fitas e loading bar</button></li>
@@ -92,6 +93,177 @@
             </div>
           </div>
         </div>
+
+        <div class="group">
+          <div class="row">
+            <label class="label" for="mirror">Mostrar o teclado de verdade
+              <small id="mirror-hint">A prévia lê as cores que os LEDs mostram agora. Só pelo cabo</small></label>
+            <input type="checkbox" role="switch" id="mirror">
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-live" aria-labelledby="live-title" hidden>
+        <header class="head">
+          <div class="head-text">
+            <h2 id="live-title">Ao vivo</h2>
+            <p class="lede">Efeitos calculados no computador e enviados ao teclado enquanto o app está
+              aberto (na bandeja também). Pelo cabo, todos; pelo dongle 2.4G, só o ritmo musical.</p>
+          </div>
+          <p class="status" role="status" aria-live="polite"></p>
+        </header>
+
+        <div class="chips wrap live-modes" id="live-modes" role="radiogroup" aria-label="Modo ao vivo"></div>
+
+        <figure class="stage" id="live-board"></figure>
+        <p class="live-state" id="live-state" role="status"></p>
+
+        <div class="group" id="live-common">
+          <div class="row">
+            <label class="label" for="live-brightness">Brilho</label>
+            <div class="slider">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 3.5v1.5M10 15v1.5M3.5 10H5M15 10h1.5"/></svg>
+              <input type="range" id="live-brightness" min="0" max="5" step="1">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2.5M10 16v2.5M1.5 10H4M16 10h2.5M4 4l1.8 1.8M14.2 14.2L16 16M4 16l1.8-1.8M14.2 5.8L16 4"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div data-live="scene">
+          <div class="group">
+            <div class="row">
+              <label class="label" for="scene-animation">Pincel
+                <small>Clique ou arraste nas teclas. Botão direito copia</small></label>
+              <select id="scene-animation"></select>
+            </div>
+            <div class="row">
+              <span class="label" id="scene-color-label">Cor</span>
+              <div class="swatches" id="scene-swatches" role="radiogroup" aria-labelledby="scene-color-label"></div>
+            </div>
+            <div class="row">
+              <span class="label">Pintar de uma vez</span>
+              <div class="chips wrap" id="scene-groups"></div>
+            </div>
+            <div class="row">
+              <label class="label" for="scene-speed">Velocidade</label>
+              <div class="slider">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5"/></svg>
+                <input type="range" id="scene-speed" min="0" max="5" step="1">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5l5 5-5 5M10 5l5 5-5 5"/></svg>
+              </div>
+            </div>
+          </div>
+          <p class="note">A "Luz personalizada" do app oficial: cada tecla com a sua animação. "Acender ao
+            tocar" escuta as teclas do AKIRA enquanto este modo está ligado; só a posição vai para o efeito.</p>
+        </div>
+
+        <div data-live="music">
+          <div class="group">
+            <div class="row">
+              <span class="label" id="music-style-label">Cores</span>
+              <div class="segmented" id="music-style" role="radiogroup" aria-labelledby="music-style-label">
+                <button type="button" role="radio" data-style="rainbow">Arco-íris</button>
+                <button type="button" role="radio" data-style="gradient">Degradê</button>
+                <button type="button" role="radio" data-style="color">Uma cor</button>
+              </div>
+            </div>
+            <div class="row" id="music-color-row">
+              <span class="label" id="music-color-label">Cor das barras</span>
+              <div class="swatches" id="music-swatches" role="radiogroup" aria-labelledby="music-color-label"></div>
+            </div>
+            <div class="row">
+              <label class="label" for="music-background">Fundo aceso
+                <small>As teclas fora das barras ficam com um brilho fraco</small></label>
+              <input type="checkbox" role="switch" id="music-background">
+            </div>
+            <div class="row">
+              <label class="label" for="music-sensitivity">Sensibilidade</label>
+              <div class="slider">
+                <span class="slider-text">−</span>
+                <input type="range" id="music-sensitivity" min="1" max="10" step="1">
+                <span class="slider-text">+</span>
+              </div>
+            </div>
+          </div>
+          <p class="note">Usa o som que o computador está tocando, sem gravar nada. Pelo dongle quem desenha
+            as barras é o próprio teclado (experimental: o número de colunas se ajusta no Laboratório).</p>
+        </div>
+
+        <div data-live="screen">
+          <div class="group">
+            <div class="row">
+              <label class="label" for="screen-vivid">Cores mais vivas
+                <small>Realça a saturação, que nos LEDs costuma sair lavada</small></label>
+              <input type="checkbox" role="switch" id="screen-vivid">
+            </div>
+            <div class="row">
+              <label class="label" for="screen-smoothing">Suavidade</label>
+              <div class="slider">
+                <span class="slider-text">Rápida</span>
+                <input type="range" id="screen-smoothing" min="0" max="10" step="1">
+                <span class="slider-text">Suave</span>
+              </div>
+            </div>
+          </div>
+          <p class="note">Cada tecla pega a cor da parte da tela principal na mesma posição. Nada é gravado,
+            e vídeo protegido aparece preto.</p>
+        </div>
+
+        <div data-live="cpu">
+          <div class="group">
+            <div class="row">
+              <span class="label" id="cpu-style-label">Mostrar</span>
+              <div class="segmented" id="cpu-style" role="radiogroup" aria-labelledby="cpu-style-label">
+                <button type="button" role="radio" data-style="bar">Barra nos números</button>
+                <button type="button" role="radio" data-style="whole">Teclado inteiro</button>
+              </div>
+            </div>
+            <div class="row">
+              <label class="label" for="cpu-low">Cor com a CPU livre</label>
+              <input type="color" id="cpu-low" class="color-field">
+            </div>
+            <div class="row">
+              <label class="label" for="cpu-high">Cor com a CPU no limite</label>
+              <input type="color" id="cpu-high" class="color-field">
+            </div>
+          </div>
+        </div>
+
+        <div data-live="timer">
+          <div class="group">
+            <div class="row">
+              <span class="label">Tempo restante <small id="timer-hint">F1 a F12 mostram o que falta</small></span>
+              <span class="inline nowrap">
+                <span class="timer-clock" id="timer-clock">25:00</span>
+                <button class="button filled" type="button" id="timer-start">Iniciar</button>
+                <button class="button" type="button" id="timer-stop">Zerar</button>
+              </span>
+            </div>
+            <div class="row">
+              <label class="label" for="timer-minutes">Minutos <small>De 1 a 180</small></label>
+              <input type="number" id="timer-minutes" class="number" min="1" max="180">
+            </div>
+            <div class="row">
+              <span class="label" id="timer-color-label">Cor</span>
+              <div class="swatches" id="timer-swatches" role="radiogroup" aria-labelledby="timer-color-label"></div>
+            </div>
+          </div>
+          <p class="note">No fim o teclado pisca e o Windows avisa. Bom para pomodoro e pausas.</p>
+        </div>
+
+        <h3 class="group-title">Avisos</h3>
+        <div class="group">
+          <div class="row">
+            <span class="label" id="alert-color-label">Piscar o teclado
+              <small>Três vezes, por cima do que estiver aceso</small></span>
+            <span class="inline nowrap">
+              <span class="swatches" id="alert-swatches" role="radiogroup" aria-labelledby="alert-color-label"></span>
+              <button class="button" type="button" id="alert-test">Testar</button>
+            </span>
+          </div>
+        </div>
+        <p class="note">Outros programas podem avisar pelo teclado com a linha de comando, por exemplo no fim de
+          um pipeline: <code>AkiraCore.exe --aviso verde</code>. Pelo dongle a cor fica fixa em vez de piscar.</p>
       </section>
 
       <section class="view" id="view-colors" aria-labelledby="colors-title" hidden>
@@ -382,8 +554,59 @@
             </span>
           </div>
         </div>
+        <div class="group">
+          <div class="row">
+            <label class="label" for="auto-profile">Trocar de perfil sozinho
+              <small>Pelo programa em primeiro plano, com os programas de cada perfil acima</small></label>
+            <input type="checkbox" role="switch" id="auto-profile">
+          </div>
+          <div class="row">
+            <label class="label" for="auto-fallback">Sem programa da lista
+              <small>Perfil quando a janela em foco não é de nenhum perfil</small></label>
+            <select id="auto-fallback"></select>
+          </div>
+        </div>
         <p class="note">Cada perfil guarda a iluminação, as teclas e as configurações do teclado.
-          Macros e esquemas de cores valem para todos. Troque de perfil aqui, na barra lateral ou na bandeja.</p>
+          Macros e esquemas de cores valem para todos. Troque de perfil aqui, na barra lateral ou na bandeja.
+          Na troca, só vai ao teclado o que muda de um perfil para o outro.</p>
+
+        <h3 class="group-title">Regras de luz</h3>
+        <div class="group">
+          <div class="row">
+            <label class="label" for="rule-lock">Apagar com o Windows bloqueado</label>
+            <input type="checkbox" role="switch" id="rule-lock">
+          </div>
+          <div class="row">
+            <label class="label" for="rule-display">Apagar com a tela desligada</label>
+            <input type="checkbox" role="switch" id="rule-display">
+          </div>
+          <div class="row">
+            <label class="label" for="rule-night">Horário noturno <small>Todo dia, no intervalo abaixo</small></label>
+            <input type="checkbox" role="switch" id="rule-night">
+          </div>
+          <div class="row" id="rule-night-time">
+            <span class="label">Das</span>
+            <span class="inline nowrap">
+              <input type="time" id="rule-start" class="text time" aria-label="Início do horário noturno">
+              <span class="muted">às</span>
+              <input type="time" id="rule-end" class="text time" aria-label="Fim do horário noturno">
+            </span>
+          </div>
+          <div class="row" id="rule-night-action">
+            <span class="label" id="rule-action-label">No horário</span>
+            <div class="segmented" id="rule-action" role="radiogroup" aria-labelledby="rule-action-label">
+              <button type="button" role="radio" data-action="off">Apagar</button>
+              <button type="button" role="radio" data-action="dim">Brilho mínimo</button>
+            </div>
+          </div>
+        </div>
+        <p class="note" id="rule-now">A luz volta sozinha quando a regra deixa de valer. Funciona com o app
+          aberto, inclusive na bandeja.</p>
+
+        <h3 class="group-title">Atalhos globais</h3>
+        <div class="group" id="hotkey-list"></div>
+        <p class="note">Funcionam com qualquer programa em foco enquanto o app estiver aberto. Use Ctrl, Alt
+          ou Win junto; Esc cancela. F13 a F24 ficam para as teclas com ação do app.</p>
 
         <h3 class="group-title">App</h3>
         <div class="group">
@@ -396,6 +619,15 @@
             <label class="label" for="battery-alert">Avisar bateria fraca
               <small>Notificação do Windows quando o 2.4G chegar a 20%</small></label>
             <input type="checkbox" role="switch" id="battery-alert">
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="row">
+            <span class="label">Linha de comando
+              <small>Para scripts e atalhos: <code>AkiraCore.exe --efeito rolando --cor azul</code>,
+                <code>--perfil Jogo</code>, <code>--aviso verde</code>, <code>--ajuda</code></small></span>
+            <button class="button" type="button" id="cli-copy">Copiar exemplo</button>
           </div>
         </div>
 

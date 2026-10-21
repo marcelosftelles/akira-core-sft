@@ -56,6 +56,21 @@ public class LiveTests
         Assert.Equal(row, KeyGeometry.RowOf(Key(name)));
     }
 
+    [Theory]
+    [InlineData(0x11, 39)]     // W
+    [InlineData(0xE048, 101)]  // seta para cima (prefixo E0)
+    [InlineData(0x01, 1)]      // Esc
+    public void ScanCodes_FindTheLedOfTheTouchedKey(int scan, int led)
+    {
+        Assert.Equal(led, KeyboardLayout.LedOfScanCode(scan));
+    }
+
+    [Fact]
+    public void ScanCodes_IgnoreKeysTheAkiraDoesNotHave()
+    {
+        Assert.Null(KeyboardLayout.LedOfScanCode(0x45)); // Num Lock
+    }
+
     // --- Quadro ----------------------------------------------------------------------
 
     [Fact]

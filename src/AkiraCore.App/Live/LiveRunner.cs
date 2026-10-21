@@ -54,6 +54,7 @@ public sealed class LiveRunner(LiveEngine engine, Func<IKeyboardLink?> openLink,
     private SpectrumAnalyzer _analyzer = new(48000);
     private AudioCapture? _audio;
     private CancellationTokenSource? _run;
+    private Thread? _thread;
     private LiveSendState _state = LiveSendState.Idle;
 
     /// <summary>Não envia (luz desligada, regra de luz, simulação); a prévia continua.</summary>
@@ -101,7 +102,8 @@ public sealed class LiveRunner(LiveEngine engine, Func<IKeyboardLink?> openLink,
             }
             var run = new CancellationTokenSource();
             _run = run;
-            new Thread(() => Loop(run)) { IsBackground = true, Name = "AkiraCore ao vivo" }.Start();
+            _thread = new Thread(() => Loop(run)) { IsBackground = true, Name = "AkiraCore ao vivo" };
+            _thread.Start();
         }
     }
 
@@ -110,6 +112,21 @@ public sealed class LiveRunner(LiveEngine engine, Func<IKeyboardLink?> openLink,
         lock (_gate)
         {
             _run?.Cancel();
+        }
+    }
+
+    /// <summary>Para e espera o laço terminar (ao fechar o app, antes de devolver a luz normal).</summary>
+    public void StopAndWait(TimeSpan timeout)
+    {
+        Thread? thread;
+        lock (_gate)
+        {
+            _run?.Cancel();
+            thread = _thread;
+        }
+        if (thread is not null && thread != Thread.CurrentThread)
+        {
+            thread.Join(timeout);
         }
     }
 
@@ -250,7 +267,7 @@ public sealed class LiveRunner(LiveEngine engine, Func<IKeyboardLink?> openLink,
             return SendResult.Skipped;
         }
         // Outro envio (luz, teclas, bateria) no meio: este quadro fica de fora
-        if (!keyboardLock.Wait(0))
+        if (!TryEnter(keyboardLock))
         {
             return SendResult.Skipped;
         }
@@ -286,6 +303,19 @@ public sealed class LiveRunner(LiveEngine engine, Func<IKeyboardLink?> openLink,
         finally
         {
             keyboardLock.Release();
+        }
+    }
+
+    /// <summary>Reserva o teclado sem esperar; false também se o app estiver fechando.</summary>
+    internal static bool TryEnter(SemaphoreSlim keyboardLock)
+    {
+        try
+        {
+            return keyboardLock.Wait(0);
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
         }
     }
 
@@ -328,7 +358,7 @@ public sealed class LiveRunner(LiveEngine engine, Func<IKeyboardLink?> openLink,
         StateChanged?.Invoke(state, detail);
     }
 
-    public void Dispose() => Stop();
+    public void Dispose() => StopAndWait(TimeSpan.FromSeconds(1));
 }
 
 /// <summary>
@@ -341,6 +371,7 @@ public sealed class LedMirror(Func<IKeyboardLink?> openLink, SemaphoreSlim keybo
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
     private readonly object _gate = new();
     private CancellationTokenSource? _run;
+    private Thread? _thread;
 
     public volatile bool SwapRedBlue;
 
@@ -370,7 +401,8 @@ public sealed class LedMirror(Func<IKeyboardLink?> openLink, SemaphoreSlim keybo
             }
             var run = new CancellationTokenSource();
             _run = run;
-            new Thread(() => Loop(run)) { IsBackground = true, Name = "AkiraCore espelho" }.Start();
+            _thread = new Thread(() => Loop(run)) { IsBackground = true, Name = "AkiraCore espelho" };
+            _thread.Start();
         }
     }
 
@@ -409,7 +441,7 @@ public sealed class LedMirror(Func<IKeyboardLink?> openLink, SemaphoreSlim keybo
                         link = null;
                         wait = RetryDelay;
                     }
-                    else if (keyboardLock.Wait(0))
+                    else if (LiveRunner.TryEnter(keyboardLock))
                     {
                         try
                         {
@@ -450,5 +482,9 @@ public sealed class LedMirror(Func<IKeyboardLink?> openLink, SemaphoreSlim keybo
         }
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        _thread?.Join(TimeSpan.FromSeconds(1));
+    }
 }

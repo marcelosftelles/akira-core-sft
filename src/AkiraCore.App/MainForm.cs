@@ -141,6 +141,7 @@ public sealed partial class MainForm : Form
             return;
         }
         _trayIcon.Visible = false;
+        ReleaseLiveBeforeExit();
         base.OnFormClosing(e);
     }
 

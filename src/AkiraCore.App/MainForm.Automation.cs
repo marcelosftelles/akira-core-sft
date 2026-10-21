@@ -28,6 +28,7 @@ public sealed partial class MainForm
     private LightOverride _lightOverride;
     private string? _pendingForeground;
     private string _registeredAppKeys = "";
+    private bool _automationStarted;
 
     private LightRulesState CurrentRules => _settings.LightRules ?? LightRulesState.Default;
     private AutoProfileState CurrentAutoProfile => _settings.AutoProfile ?? AutoProfileState.Default;
@@ -58,7 +59,13 @@ public sealed partial class MainForm
         _hotkeys.Attach(Handle);
         _session.Attach(Handle);
         RegisterGlobalHotkeys(report: false);
+        _registeredAppKeys = ""; // handle novo: os atalhos reservados precisam ser registrados de novo
         RegisterAppKeys();
+        if (_automationStarted)
+        {
+            return;
+        }
+        _automationStarted = true;
         UpdateForegroundWatcher();
         _rulesTimer.Start();
         EvaluateLightRules();

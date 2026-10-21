@@ -396,6 +396,41 @@ public sealed partial class MainForm
         }
     }
 
+    /// <summary>
+    /// Ao sair com o modo ao vivo no cabo, o teclado ficaria parado no último quadro: espera o laço
+    /// fechar e devolve a luz normal (ou apagada) pelo comando de sempre.
+    /// </summary>
+    private void ReleaseLiveBeforeExit()
+    {
+        _mirror.Stop();
+        if (!_liveRunner.Running)
+        {
+            return;
+        }
+        _liveRunner.StopAndWait(TimeSpan.FromSeconds(1.5));
+        if (_simulate || !_keyboardLock.Wait(TimeSpan.FromSeconds(2)))
+        {
+            return;
+        }
+        try
+        {
+            using var link = OpenLink();
+            if (link.HasStreaming)
+            {
+                CurrentLightingAction()(new Core.KeyboardClient(link));
+            }
+        }
+        catch (Exception ex) when (ex is KeyboardException or System.ComponentModel.Win32Exception
+                                       or ArgumentException or FormatException)
+        {
+            System.Diagnostics.Debug.WriteLine($"Luz não restaurada ao sair: {ex.Message}");
+        }
+        finally
+        {
+            _keyboardLock.Release();
+        }
+    }
+
     // --- Estado para a página -------------------------------------------------------------
 
     private object LiveView() => new

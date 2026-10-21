@@ -3,6 +3,8 @@
 import { VIEWBOX, BODY, KNOB, ZONES, KEYS, SCAN_CODES } from "./layout.js";
 import { createKeyboardPages } from "./keys.js";
 import { createColorsPage } from "./colors.js";
+import { createLivePage } from "./live.js";
+import { createAutomationSettings } from "./automation.js";
 
 const host = window.chrome?.webview
   ? webViewHost(window.chrome.webview)
@@ -21,7 +23,9 @@ const state = {
   options: { swapRedBlue: false, simulate: false, startWithWindows: false, batteryAlert: true },
   device: { connected: false, channel: null, name: "", battery: { level: null, cable: false } },
   customActive: false, // um esquema de cores por tecla está no teclado no lugar do efeito
-  profiles: { list: [], activeId: null },
+  profiles: { list: [], activeId: null, auto: { enabled: false, fallbackId: null } },
+  mirror: false,          // prévia lendo as cores reais (04 F5)
+  mirrorColors: null,     // índice do LED → #RRGGBB, da última leitura
   view: "lighting",
   loaded: false,
 };
@@ -47,16 +51,38 @@ host.onMessage((message) => {
       state.options = message.options;
       state.device = message.device;
       state.profiles = message.profiles ?? state.profiles;
+      state.mirror = Boolean(message.mirror);
       loadCustomLights(message.customLights);
       // Ao abrir, a página certa é a do que está no teclado
       if (!state.loaded && state.customActive) showView("colors");
       state.loaded = true;
       renderAll();
       if (message.keyboard) keyboardPages.load(message.keyboard);
+      livePage.device(state.device);
+      livePage.load(message.live);
+      automation.load(message.automation);
       break;
     case "device":
       state.device = message.device;
       renderDevice();
+      livePage.device(state.device);
+      break;
+    case "liveFrame":
+      livePage.frame(message.colors);
+      break;
+    case "liveStatus":
+      livePage.status(message.status);
+      break;
+    case "mirror":
+      state.mirrorColors = message.colors;
+      renderMirrorHint(message.problem);
+      paintBoards();
+      break;
+    case "automation":
+      automation.load(message.automation);
+      break;
+    case "filePicked":
+      keyboardPages.filePicked(message.purpose, message.path);
       break;
     case "status":
       showStatus(message.kind, message.text);
@@ -174,6 +200,10 @@ for (const button of document.querySelectorAll(".nav-bottom .nav-item")) {
 const keyboardPages = createKeyboardPages(host);
 keyboardPages.onNavigate(showView);
 
+// Ao vivo fica em live.js; regras de luz e atalhos globais em automation.js
+const livePage = createLivePage(host);
+const automation = createAutomationSettings(host);
+
 // Cores por tecla fica em colors.js; usar um esquema liga a luz e tira o efeito da seleção
 const colorsPage = createColorsPage(host, {
   onActivate(id) {
@@ -184,7 +214,10 @@ const colorsPage = createColorsPage(host, {
 });
 
 function showView(view) {
-  if (view !== state.view) keyboardPages.leave();
+  if (view !== state.view) {
+    keyboardPages.leave();
+    automation.leave();
+  }
   state.view = view;
   for (const section of document.querySelectorAll(".view")) {
     section.hidden = section.id !== `view-${view}`;
@@ -367,6 +400,8 @@ for (const button of document.querySelectorAll("#view-lighting .segmented button
 // --- Ajustes ---------------------------------------------------------------------
 
 function renderSettings() {
+  $("mirror").checked = state.mirror;
+  renderMirrorHint();
   $("swap").checked = state.options.swapRedBlue;
   $("simulate").checked = state.options.simulate;
   $("autostart").checked = state.options.startWithWindows;
@@ -383,6 +418,24 @@ for (const [id, option] of Object.entries(OPTION_KEYS)) {
     renderDevice();
     host.post({ type: "setOption", key: option, value: e.target.checked });
   });
+}
+
+// Espelho: a prévia passa a pintar as cores lidas do teclado (só cabo; o app avisa o motivo se não der)
+$("mirror").addEventListener("change", (e) => {
+  state.mirror = e.target.checked;
+  if (!state.mirror) state.mirrorColors = null;
+  renderMirrorHint();
+  host.post({ type: "setMirror", on: state.mirror });
+});
+
+function renderMirrorHint(problem) {
+  const hint = $("mirror-hint");
+  hint.textContent = state.mirror && problem
+    ? problem
+    : state.mirror && state.mirrorColors
+      ? "Mostrando as cores lidas do teclado agora"
+      : "A prévia lê as cores que os LEDs mostram agora. Só pelo cabo";
+  hint.dataset.kind = state.mirror && problem ? "warn" : "";
 }
 
 $("diagnose").addEventListener("click", () => host.post({ type: "diagnose" }));
@@ -465,13 +518,45 @@ function renderProfiles() {
       remove.classList.add("destructive");
       actions.append(use, remove);
     }
+    const apps = document.createElement("input");
+    apps.type = "text";
+    apps.className = "text apps";
+    apps.spellcheck = false;
+    apps.placeholder = "Programas, ex.: valorant.exe, cs2.exe";
+    apps.value = (p.apps ?? []).join(", ");
+    apps.setAttribute("aria-label", `Programas que trocam para o perfil ${p.name}`);
+    apps.addEventListener("change", () => host.post({
+      type: "setProfileApps",
+      id: p.id,
+      apps: apps.value.split(/[,;\n]/).map((a) => a.trim()).filter(Boolean),
+    }));
+    const fields = document.createElement("span");
+    fields.className = "profile-fields";
+    fields.append(name, apps);
     const row = document.createElement("div");
     row.className = "row";
-    row.append(name, actions);
+    row.append(fields, actions);
     return row;
   }));
   $("profile-new").disabled = list.length >= 20;
+
+  const auto = state.profiles.auto ?? { enabled: false, fallbackId: null };
+  $("auto-profile").checked = auto.enabled;
+  const fallback = $("auto-fallback");
+  fallback.replaceChildren(new Option("Manter o perfil atual", ""),
+    ...list.map((p) => new Option(p.name, p.id, false, p.id === auto.fallbackId)));
+  fallback.value = auto.fallbackId ?? "";
+  fallback.closest(".row").setAttribute("aria-disabled", String(!auto.enabled));
 }
+
+function sendAutoProfile() {
+  const auto = { enabled: $("auto-profile").checked, fallbackId: $("auto-fallback").value || null };
+  state.profiles.auto = auto;
+  renderProfiles();
+  host.post({ type: "setAutoProfile", auto });
+}
+$("auto-profile").addEventListener("change", sendAutoProfile);
+$("auto-fallback").addEventListener("change", sendAutoProfile);
 
 function button(text, onClick) {
   const b = document.createElement("button");
@@ -728,15 +813,26 @@ function paintBoards(now = performance.now()) {
   const base = hexToRgb(lighting.color);
   const context = { base, rainbow, dir: lighting.reverse ? -1 : 1, pick: (h) => (rainbow ? hsl(h) : base) };
   const run = EFFECTS[effect.mode] ?? EFFECTS[1];
+  // Espelho ligado e com leitura: as cores vêm do teclado, não da simulação
+  const mirror = state.mirror && state.mirrorColors;
   // Abertura: as teclas acendem da esquerda para a direita no primeiro segundo
   const sweep = reduceMotion.matches ? 1 : Math.min(1, seconds / 0.9);
   if (!reduceMotion.matches) spawnEvents(ts, now);
 
   for (let i = 0; i < KEYS.length; i++) {
     const p = keyPoints[i];
-    const [raw, rgb] = run(p, ts, context, i);
-    const power = Math.max(0, Math.min(1, (sweep * 1.3 - p.x) * 4));
-    const intensity = Math.max(0, Math.min(1, raw)) * level * power;
+    let [raw, rgb] = run(p, ts, context, i);
+    let power = Math.max(0, Math.min(1, (sweep * 1.3 - p.x) * 4));
+    let gain = level;
+    if (mirror) {
+      const real = hexToRgb(state.mirrorColors[KEYS[i].led] ?? "#000000");
+      const peak = Math.max(...real);
+      raw = peak / 255;
+      rgb = peak > 0 ? real.map((c) => (c * 255) / peak) : [0, 0, 0];
+      power = 1;
+      gain = 1;
+    }
+    const intensity = Math.max(0, Math.min(1, raw)) * gain * power;
     const color = `rgb(${rgb.map(Math.round).join(",")})`;
     const tint = 0.22 * intensity;
     // Tecla segurada no AKIRA fica um pouco mais escura, como se afundasse

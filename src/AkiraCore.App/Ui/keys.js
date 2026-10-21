@@ -1,6 +1,6 @@
 // Telas de Teclas, Macros e do grupo Teclado em Ajustes. Só estado de tela: a validação e os
-// bytes ficam no AkiraCore.Core (KeysState.cs). Mensagens: setKeys {assignments},
-// saveMacros {macros, assignments}, setDevice {settings}.
+// bytes ficam no AkiraCore.Core (KeysState.cs, AppKeyActions.cs). Mensagens: setKeys {assignments},
+// saveMacros {macros, assignments}, setDevice {settings}, pickFile {purpose}.
 import { VIEWBOX, BODY, KEYS } from "./layout.js";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -21,8 +21,18 @@ const SHORTCUTS = [
 const MOUSE_BUTTONS = [[1, "esquerdo"], [2, "direito"], [4, "do meio"]];
 const ACTIONS = [
   ["default", "Original"], ["disabled", "Desativada"], ["key", "Outra tecla ou atalho"],
-  ["media", "Multimídia"], ["mouse", "Mouse"], ["macro", "Macro"],
+  ["media", "Multimídia"], ["mouse", "Mouse"], ["macro", "Macro"], ["app", "Ação do app"],
 ];
+// Dica de cada ação do app (os rótulos vêm do Core, em catalog.appActions)
+const APP_HINTS = {
+  open: "Programa, arquivo ou atalho do Windows",
+  site: "Endereço completo, com https://",
+  text: "Digitado como está, em qualquer layout de teclado",
+  media: "Teclas que o firmware não tem",
+  lock: "Como Win + L",
+  sleep: "O computador entra em suspensão",
+  shutdown: "Desliga em 30 s; apertar de novo cancela",
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -91,6 +101,14 @@ export function createKeyboardPages(host) {
       case "macro": {
         const macro = ks.macros.find((m) => m.id === a.macroId);
         return `Macro: ${macro?.name ?? "?"}`;
+      }
+      case "app": {
+        const kind = ks.catalog.appActions?.find((k) => k.key === a.app)?.label ?? "Ação do app";
+        if (!a.target) return kind;
+        const target = a.app === "media"
+          ? ks.catalog.appMedia?.find((m) => m.key === a.target)?.label ?? a.target
+          : a.app === "open" ? a.target.split(/[\\/]/).pop() : a.target;
+        return `${kind}: ${target.length > 40 ? `${target.slice(0, 40)}…` : target}`;
       }
       default: return "Original";
     }
@@ -192,6 +210,7 @@ export function createKeyboardPages(host) {
     if (d.action === "media") rows.push(row("Função", listSelect(ks.catalog.media, d.media, (v) => update({ media: v }))));
     if (d.action === "mouse") rows.push(row("Função", listSelect(ks.catalog.mouse, d.mouse, (v) => update({ mouse: v }))));
     if (d.action === "macro") rows.push(...macroRows(d));
+    if (d.action === "app") rows.push(...appRows(d));
     editor.replaceChildren(...rows);
   }
 
@@ -275,6 +294,45 @@ export function createKeyboardPages(host) {
     return rows;
   }
 
+  // Ação do app: o teclado manda um atalho reservado (F13 a F24) e o app aberto executa
+  function appRows(d) {
+    const kinds = ks.catalog.appActions ?? [];
+    const kind = listSelect(kinds, d.app, (v) => update({ app: v, target: v === "media" ? ks.catalog.appMedia[0].key : "" }));
+    const rows = [row("Ação", kind, APP_HINTS[d.app])];
+    const needs = kinds.find((k) => k.key === d.app)?.target;
+    if (!needs) {
+      rows.push(note("Funciona com o app aberto, inclusive na bandeja."));
+      return rows;
+    }
+    if (d.app === "media") {
+      rows.push(row("Tecla", listSelect(ks.catalog.appMedia, d.target, (v) => update({ target: v }))));
+    } else if (d.app === "text") {
+      const text = node("textarea", { className: "text", rows: 3, maxLength: 500, spellcheck: false, value: d.target ?? "" });
+      text.addEventListener("change", () => update({ target: text.value }));
+      rows.push(node("div", { className: "row text-entry" },
+        node("span", { className: "label", textContent: "Texto" }, node("small", { textContent: "Até 500 caracteres" })), text));
+    } else {
+      const input = node("input", {
+        type: "text", className: "text", spellcheck: false, value: d.target ?? "",
+        placeholder: d.app === "site" ? "https://" : "C:\\Programas\\app.exe",
+      });
+      input.addEventListener("change", () => update({ target: input.value.trim() }));
+      const controls = node("div", { className: "inline nowrap" }, input);
+      if (d.app === "open") {
+        const browse = node("button", { type: "button", className: "button", textContent: "Procurar…" });
+        browse.addEventListener("click", () => host.post({ type: "pickFile", purpose: "key" }));
+        controls.append(browse);
+      }
+      rows.push(row(d.app === "site" ? "Site" : "Programa", controls));
+    }
+    rows.push(note("Funciona com o app aberto, inclusive na bandeja."));
+    return rows;
+  }
+
+  function note(text) {
+    return node("div", { className: "row empty" }, node("span", { className: "label", textContent: text }));
+  }
+
   function changeAction(action) {
     const base = { key: ks.selected, layer: ks.layer, action };
     const defaults = {
@@ -282,6 +340,7 @@ export function createKeyboardPages(host) {
       media: { media: ks.catalog.media[0].key },
       mouse: { mouse: ks.catalog.mouse[0].key },
       macro: { macroId: ks.macros[0]?.id ?? null, playback: "once", repeat: 1 },
+      app: { app: "open", target: "" },
     };
     ks.draft = { ...base, ...(defaults[action] ?? {}) };
     commit();
@@ -297,6 +356,12 @@ export function createKeyboardPages(host) {
     switch (d.action) {
       case "key": return d.usage > 0 || d.modifiers > 0;
       case "macro": return ks.macros.some((m) => m.id === d.macroId);
+      case "app": {
+        const needs = ks.catalog.appActions?.find((k) => k.key === d.app)?.target;
+        if (!needs) return true;
+        const target = (d.target ?? "").trim();
+        return d.app === "site" ? /^https?:\/\/\S+$/i.test(target) : target.length > 0;
+      }
       default: return true;
     }
   }
@@ -684,5 +749,10 @@ export function createKeyboardPages(host) {
     },
     /** Ao sair da página, para gravação e captura em andamento. */
     leave() { stopRecording(); stopCapture(); },
+    /** Arquivo escolhido no "Procurar…" de uma ação do app. */
+    filePicked(purpose, path) {
+      if (purpose !== "key" || ks.draft?.action !== "app" || !path) return;
+      update({ target: path });
+    },
   };
 }
