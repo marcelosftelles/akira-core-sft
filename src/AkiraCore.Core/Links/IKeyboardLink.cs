@@ -36,4 +36,13 @@ public interface IKeyboardLink : IDisposable
 
     /// <summary>Pergunta o nível da bateria e devolve a resposta inteira, com Report ID no índice 0.</summary>
     byte[] QueryBattery();
+
+    /// <summary>O canal lê as cores que os LEDs mostram agora (só o cabo, como no oficial).</summary>
+    bool CanReadLedColors { get; }
+
+    /// <summary>
+    /// Lê o buffer de 576 bytes com a cor atual de cada LED, no formato do envio por LED.
+    /// Null quando o teclado não confirma ou não manda nenhum pacote: o oficial só pula o quadro.
+    /// </summary>
+    byte[]? ReadLedColors();
 }

@@ -13,20 +13,22 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
 - A interface principal é HTML/CSS/JS em `src/AkiraCore.App/Ui` (sem bibliotecas, sem rede, CSP
   `'self'`), embutida no .exe e servida pelo `EmbeddedUi` em `https://akira.ui` dentro de um WebView2.
   O Laboratório continua WinForms (ferramenta técnica).
-- Contrato da interface: a página manda `ready`, `apply {lighting}`, `setLight {on, lighting}`,
+- Contrato da interface: a página manda `ready`, `view {name}`, `apply {lighting}`, `setLight {on, lighting}`,
   `setOption {key, value}`, `setKeys {assignments}`, `saveMacros {macros, assignments}`,
   `setDevice {settings}`, `factoryReset`, `diagnose`, `openLab`, `saveCustomLights {schemes}`,
   `useCustomLight {id}`, `textMacro {text, delay}`, `exportBackup`, `importBackup`,
   `exportMacros {macros}`, `importMacros`, `exportColors {id}`, `importColors`, `switchProfile {id}`,
   `createProfile {name}`, `renameProfile {id, name}`, `deleteProfile {id}`; o app responde `state`
-  (com os blocos `keyboard {catalog, assignments, macros, settings}`, `customLights {schemes, activeId}`
-  e `profiles {list, activeId}`), `device` (com `battery {level, cable}`), `status {kind, text}`,
-  `log {title, lines}`, `customLights`, `profiles`, `macroText {events, skipped, layout}`,
-  `macrosImported {macros}` e `key {scan, down}` (tecla tocada no AKIRA, scan code
-  do conjunto 1 com `0xE000` para prefixo E0; mapa em `SCAN_CODES` no `layout.js`).
+  (com `lighting {effect, color, brightness, speed, direction, rainbow}`, `effectSettings` (ajustes
+  de cada efeito), `effectDefaults` e os blocos `keyboard {catalog, assignments, macros, settings}`,
+  `customLights {schemes, activeId}` e `profiles {list, activeId}`), `device` (com
+  `battery {level, cable}`), `status {kind, text}`, `log {title, lines}`, `customLights`,
+  `profiles`, `macroText {events, skipped, layout}`, `macrosImported {macros}` e
+  `mirror {colors}` (cor 0xRRGGBB por índice de LED lida com `04 F5`; null = parou).
   O Raw Input de teclado aceita um destino por processo: há um `RawKeyboardMonitor` só, preso à
-  janela principal; prévia (janela visível) e Laboratório pedem escuta com `Listen()`. Validação em `AkiraCore.Core.Presentation`
-  (`LightingState`, `EffectView`, `KeysState.cs`): estado inválido nunca vira envio.
+  janela principal; só o Laboratório pede escuta com `Listen()` (a prévia não escuta teclas).
+  Validação em `AkiraCore.Core.Presentation` (`LightingState`, `EffectSettingsState`, `EffectView`,
+  `KeysState.cs`): estado inválido nunca vira envio.
   As páginas Teclas e Macros e o grupo Teclado de Ajustes ficam em `Ui/keys.js`; Cores por tecla
   em `Ui/colors.js`. Arquivos exportados (backup, macros, cores) são JSON com campo `format`,
   validados em `ConfigFiles`. Perfis: os campos de `AppSettings` são o perfil ativo em uso e cada
@@ -35,8 +37,15 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
   Revisão da interface no Windows: `scratchpad` com servidor Node estático e Edge headless
   (`--screenshot` ou CDP); não há Python nesta máquina.
 - Visual: estilo Ajustes do macOS, fonte do sistema (Segoe UI Variable), um azul de destaque, tema
-  segue o Windows. A prévia do teclado é aproximada; geometria em `Ui/layout.js`, gerada do
+  segue o Windows. Geometria em `Ui/layout.js` (com o `code` HID de cada tecla), gerada do
   `rgb-keyboard.xml` oficial.
+- Efeitos e prévia copiados do oficial (pedido do usuário em 21/10/2026: "extremamente copião"):
+  cada efeito lembra os próprios ajustes (`EffectSettingsState`, semeados como `fcn.0042b280`),
+  controles que o efeito não usa somem, brilho e velocidade de 1 a 5, setas com os valores de
+  `fcn.0042c500`. Prévia: pelo cabo, espelho dos LEDs lido com `04 F5` (`MainForm.Preview.cs`, só
+  com a página de iluminação aberta e sem envio em andamento, parado com o Laboratório aberto);
+  no dongle, parada na cor ou na paleta arco-íris da `mui.dll` (`Ui/preview.js`). Não há mais
+  simulação de efeito. A foto `img_keyboard_layout.png` do oficial não foi copiada (direito autoral).
 - Todo offset de byte novo ganha teste em `tests/AkiraCore.Core.Tests` citando a função de origem
   no binário oficial (ex.: `fcn.0042b170`).
 - Segurança: comandos de iluminação, o reset de fábrica oficial (`0F` no dongle, pedido do
@@ -58,7 +67,9 @@ usuário (o dotnet procura `dotnet-<nome>` no PATH quando o comando não existe)
 O teste em hardware é feito pelo usuário no Windows; o ambiente de nuvem só compila e roda testes.
 Para revisar a interface aqui: `python3 -m http.server` dentro de `src/AkiraCore.App/Ui` e
 screenshots com o Playwright do ambiente (`/opt/node-tools/node_modules/playwright`); o
-`dev-mock.js` faz o papel do app (parâmetros listados no README).
+`dev-mock.js` faz o papel do app (parâmetros listados no README; `?mirror=1` imita o espelho).
+Engenharia reversa na nuvem: instalador enviado pelo usuário, `innoextract` (apt) e Ghidra 11.4.2
+headless (baixado das releases do GitHub) com um script que descompila tudo para texto.
 O pacote do WebView2 referencia o controle WPF sempre; o `.csproj` remove essa referência
 (target `RemoveWebView2Wpf`) para não ter o aviso MSB3277.
 No Linux, o `dotnet-sdk-8.0` do Ubuntu não traz os alvos de WinForms: copie a pasta
@@ -80,7 +91,8 @@ Prioridade: cabo antes do dongle (igual ao oficial). Regra em `ChannelClassifier
 
 **Bloco de iluminação (16 bytes, igual nos dois canais):**
 `[0]` modo, `[1..3]` R G B (ordem COLORREF; nenhuma inversão relatada em hardware), `[8]` arco-íris,
-`[9]` brilho 0..5, `[10]` velocidade 0..5, `[11]` direção, `[14..15]` `AA 55`.
+`[9]` brilho 0..5, `[10]` velocidade 0..5 (a tela do oficial só usa 1..5), `[11]` direção
+(0 esquerda, 1 direita, 2 cima, 3 baixo; Rolagem usa 2 e 3), `[14..15]` `AA 55`.
 Modo 0 = desligado (envia só o byte 0). Modo `0x80` = personalizado por LED (byte 9 = brilho).
 Tabela dos 20 efeitos em `EffectCatalog` (extraída de `fcn.0042b280`).
 
@@ -88,6 +100,8 @@ Tabela dos 20 efeitos em `EffectCatalog` (extraída de `fcn.0042b280`).
 transação `04 18` (ACK) → `04 <op>` com `[8]` = nº de pacotes (ACK) → dados (sem ACK)
 → `04 02` (ACK) → `04 F0` (sem ACK). ACK = GetFeature com `report[4] == 1`. 35 ms entre envios.
 Iluminação: op `0x13`, 1 pacote. Cores por LED: op `0x23`, 9 pacotes.
+Leitura das cores atuais (prévia, `fcn.0042adb0`/`fcn.0044f230`): `04 F5` com `[8]` = 9, ACK, até 9
+GetFeature de 64 bytes, `04 02` com ACK; sem `04 18` e sem `04 F0`.
 
 **Dongle (output report de 33 bytes, Report ID 0):**
 conteúdo em `[1..31]`, checksum de 8 bits (soma de `[0..31]`) em `[32]`. Confirmação = input
@@ -181,8 +195,9 @@ LED) em `fcn.0042adb0`; reset de fábrica oficial mapeado e implementado
 (`KeyboardClient.RestoreFactoryDefaults`, botão "Restaurar padrão de fábrica"): `0F` no dongle
 + iluminação padrão; no cabo só a iluminação padrão, porque o oficial não tem comando.
 
-**Próximo passo:** usuário roda T0 a T3 e envia os logs. Depois, implementar a leitura `04 F5`
-no Laboratório (só cabo) e comparar a tabela antes e depois de `Fn + Z` e `Fn + /?`.
+**Próximo passo:** usuário roda T0 a T3 e envia os logs. A leitura `04 F5` já existe no Core
+(`KeyboardClient.ReadLedColors`); falta usá-la no Laboratório para comparar a tabela antes e depois
+de `Fn + Z` e `Fn + /?` (índices sem tecla, ver `LedMap.UnmappedIndices`).
 
 Se encontrar os índices: criar `ExtraZone` (canto esquerdo, canto direito, mini fita) no Core,
 UI com cor por zona, e explicar o trade-off (no modo `0x80` as teclas ficam com cor fixa).
@@ -191,11 +206,6 @@ atalhos no app.
 
 ## Pendências menores
 
-- Prévia dos efeitos: aproximação sem descrição oficial. Rolagem é vertical (único com o par de
-  direções alternativo, bit `0x08`). O usuário relatou em 20/10/2026 que alguns efeitos não batem
-  com o teclado; falta saber quais e como aparecem de verdade (incluindo se velocidade 0 é a mais
-  lenta e se brilho 0 apaga).
-
-- Faixa real do campo direção (hoje 0 ou 1).
+- Testar em hardware o espelho da prévia (`04 F5`) e as setas 2/3 do Rolagem (antes o app mandava 1).
 - Significado do opcode `0xF0` (enviado porque o oficial sempre envia).
 - `SideLightCatalog` e o envio lateral só existem no Laboratório; remover se a hipótese da matriz se confirmar.

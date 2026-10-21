@@ -340,6 +340,8 @@ h2 {
   right: 0;
   border-top: 1px solid var(--separator);
 }
+/* Primeira linha visível de um grupo com linhas escondidas: sem separador em cima */
+.row[data-first]::before { display: none; }
 .row[aria-disabled="true"] > :not(.label) { opacity: 0.38; pointer-events: none; }
 .row[aria-disabled="true"] .label { color: var(--ink-2); }
 

@@ -37,9 +37,8 @@ public sealed partial class MainForm : Form
     private readonly System.Windows.Forms.Timer _deviceTimer = new() { Interval = 700 };
     // Um envio por vez: duas transações abertas juntas se misturariam no teclado
     private readonly SemaphoreSlim _keyboardLock = new(1, 1);
-    // Teclas do AKIRA (Raw Input): alimentam a prévia e o monitor do Laboratório
+    // Teclas do AKIRA (Raw Input): só o monitor do Laboratório escuta
     private readonly RawKeyboardMonitor _rawKeyboard = new();
-    private IDisposable? _previewKeys;
     // Bateria: o oficial pergunta ao dongle a cada 15 s (fcn.004357d0)
     private readonly System.Windows.Forms.Timer _batteryTimer = new()
     {
@@ -65,6 +64,8 @@ public sealed partial class MainForm : Form
         _startHidden = startHidden;
         _lighting = LoadLighting(_settings);
         SanitizeKeyboardSettings(_settings);
+        // Arquivo de versão antiga não tem a memória por efeito: o efeito em uso entra nela já
+        _settings.EffectSettings[_lighting.Effect] = _lighting.Settings;
         EnsureProfiles();
         _keysSender = new LatestOnly(SendKeysAsync);
         _deviceSender = new LatestOnly(SendDeviceAsync);
@@ -86,13 +87,13 @@ public sealed partial class MainForm : Form
         {
             _deviceTimer.Stop();
             PostDevice();
+            ForgetMirrorDevice();
             _ = RefreshBatteryAsync(); // dongle recém-conectado: o oficial lê na hora
         };
         _batteryTimer.Tick += (_, _) => _ = RefreshBatteryAsync();
         Activated += (_, _) => PostDevice();
-        VisibleChanged += (_, _) => UpdatePreviewKeys();
-        Resize += (_, _) => UpdatePreviewKeys();
-        _rawKeyboard.KeyReceived += OnRawKey;
+        VisibleChanged += (_, _) => UpdateMirror();
+        Resize += (_, _) => UpdateMirror();
         SystemEvents.UserPreferenceChanged += OnThemeChanged;
     }
 
@@ -149,33 +150,6 @@ public sealed partial class MainForm : Form
             _rawKeyboard.Process(m.LParam);
         }
         base.WndProc(ref m); // DefWindowProc libera o buffer do WM_INPUT
-    }
-
-    /// <summary>
-    /// A prévia só escuta as teclas enquanto está na tela: na bandeja ou minimizado,
-    /// nada do que se digita passa pelo app (o Laboratório pede a própria escuta).
-    /// </summary>
-    private void UpdatePreviewKeys()
-    {
-        var wanted = _webReady && Visible && WindowState != FormWindowState.Minimized;
-        if (wanted && _previewKeys is null)
-        {
-            _previewKeys = _rawKeyboard.Listen();
-        }
-        else if (!wanted && _previewKeys is not null)
-        {
-            _previewKeys.Dispose();
-            _previewKeys = null;
-        }
-    }
-
-    private void OnRawKey(RawKey key)
-    {
-        // Só a posição vai para a página, para acender a tecla na prévia; nada é guardado
-        if (_previewKeys is not null)
-        {
-            Post(new { type = "key", scan = key.ScanCode, down = !key.Released });
-        }
     }
 
     private void OnThemeChanged(object? sender, UserPreferenceChangedEventArgs e)
@@ -282,7 +256,11 @@ public sealed partial class MainForm : Form
                 case "ready":
                     _webReady = true;
                     PostState();
-                    UpdatePreviewKeys();
+                    UpdateMirror();
+                    break;
+                case "view":
+                    _view = message.GetProperty("name").GetString() ?? "";
+                    UpdateMirror();
                     break;
                 case "apply":
                     if (AcceptLighting(message))
@@ -351,7 +329,9 @@ public sealed partial class MainForm : Form
         {
             return false;
         }
-        _lighting = candidate;
+        // Controle que o efeito não mostra fica com o valor semeado, como no oficial
+        _lighting = candidate.Normalized();
+        _settings.EffectSettings[_lighting.Effect] = _lighting.Settings;
         return true;
     }
 
@@ -509,6 +489,7 @@ public sealed partial class MainForm : Form
         {
             settings.CustomLights = [];
         }
+        settings.EffectSettings = EffectSettingsState.Sanitize(settings.EffectSettings);
         if (settings.CustomLights.All(s => s.Id != settings.CustomLightId))
         {
             settings.CustomLightId = null;
@@ -547,6 +528,8 @@ public sealed partial class MainForm : Form
         type = "state",
         effects = EffectView.Catalog,
         lighting = _lighting,
+        effectSettings = _settings.EffectSettings,
+        effectDefaults = EffectSettingsState.Default,
         lightOn = _settings.LightOn,
         options = new
         {
@@ -593,7 +576,7 @@ public sealed partial class MainForm : Form
 
     /// <summary>
     /// Lê o nível pelo dongle, mesmo com o cabo ligado, para mostrar a carga subindo.
-    /// Se um envio estiver em andamento, fica para a próxima rodada; se o teclado estiver
+    /// Se um envio passar de 1 s, fica para a próxima rodada; se o teclado estiver
     /// dormindo, o dongle não confirma e vale o último nível lido, como no oficial.
     /// </summary>
     private async Task RefreshBatteryAsync()
@@ -608,7 +591,9 @@ public sealed partial class MainForm : Form
         {
             _batteryLevel = null;
         }
-        else if (await _keyboardLock.WaitAsync(0))
+        // O espelho da prévia (cabo) segura o canal quase o tempo todo; o oficial lê a bateria
+        // entre um quadro e outro, então aqui ela espera a vez em vez de desistir na hora
+        else if (await _keyboardLock.WaitAsync(TimeSpan.FromSeconds(1)))
         {
             try
             {
@@ -681,12 +666,15 @@ public sealed partial class MainForm : Form
 
     private static LightingState LoadLighting(AppSettings settings)
     {
+        // Arquivo de versão antiga: o "invertido" era o 1, a seta para a direita do oficial
+        var direction = settings.ReverseDirection is { } reverse ? (reverse ? 1 : 0) : settings.Direction;
         var saved = new LightingState(settings.EffectKey, "#" + settings.ColorHex, settings.Brightness,
-            settings.Speed, settings.ReverseDirection, settings.Rainbow);
+            settings.Speed, direction, settings.Rainbow);
         try
         {
-            saved.ToConfig(); // valida: arquivo editado à mão não pode quebrar o app
-            return saved;
+            var lighting = saved.Normalized();
+            lighting.ToConfig(); // valida: arquivo editado à mão não pode quebrar o app
+            return lighting;
         }
         catch (Exception ex) when (ex is ArgumentException or FormatException)
         {
@@ -769,6 +757,8 @@ public sealed partial class MainForm : Form
         // Nos dois canais o teclado fica sem teclas remapeadas, sem macros e com as
         // configurações padrão (dongle: o próprio firmware apaga; cabo: o app reenviou)
         _lighting = LightingState.From(FactoryDefaults.Lighting);
+        // O oficial apaga o banco e semeia todos os efeitos de novo (fcn.0042b280)
+        _settings.EffectSettings = [];
         _settings.LightOn = true;
         _settings.CustomLightId = null;
         _settings.KeyAssignments = [];
@@ -819,6 +809,7 @@ public sealed partial class MainForm : Form
             case "simulate":
                 _simulate = value;
                 PostDevice();
+                UpdateMirror(); // simulando nada sai para o teclado, nem a leitura da prévia
                 break;
             case "batteryAlert":
                 _settings.BatteryAlert = value;
@@ -845,8 +836,10 @@ public sealed partial class MainForm : Form
         _settings.ColorHex = _lighting.Color.TrimStart('#');
         _settings.Brightness = _lighting.Brightness;
         _settings.Speed = _lighting.Speed;
-        _settings.ReverseDirection = _lighting.Reverse;
+        _settings.Direction = _lighting.Direction;
+        _settings.ReverseDirection = null;
         _settings.Rainbow = _lighting.Rainbow;
+        _settings.EffectSettings[_lighting.Effect] = _lighting.Settings;
         SyncActiveProfile();
         _settings.Save();
     }
@@ -890,6 +883,7 @@ public sealed partial class MainForm : Form
             return;
         }
         _labForm = new LabForm(OpenLink, CurrentConfig, _rawKeyboard);
+        _labForm.FormClosed += (_, _) => BeginInvoke(UpdateMirror);
         _labForm.Show(this);
     }
 

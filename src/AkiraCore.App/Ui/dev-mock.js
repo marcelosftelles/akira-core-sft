@@ -1,11 +1,13 @@
 // Só para abrir a interface num navegador comum (sem WebView2), ex.: revisar o visual.
 // Responde como o app responderia. Parâmetros na URL: view, device (usb|dongle|none),
-// effect, off, rainbow, color, log, dialog, typing (1 = simula teclas tocadas no AKIRA),
+// effect, off, rainbow, color, direction, log, dialog, mirror (1 = imita os quadros que o app
+// lê do teclado pelo cabo; sem ele a prévia fica parada, como no dongle),
 // macros (1 = já vem com uma macro e duas teclas mudadas), select (índice da tecla aberta
 // na página Teclas). view aceita keys, macros, colors e settings. battery (nível, ex.: 15) e
 // cable=1 (cabo ligado junto com o dongle) mostram a bateria na barra lateral. colors=1 traz
 // um esquema de cores por tecla em uso (colors=0 nenhum esquema); text=1 abre "Inserir texto".
 // O catálogo é uma cópia do EffectCatalog do Core apenas para esta prévia.
+import { KEYS } from "./layout.js";
 
 const CATALOG = [
   ["static", "Estático", 1, "BCR"], ["single-on", "Acender ao tocar", 2, "BSCR"],
@@ -21,8 +23,28 @@ const CATALOG = [
 ].map(([key, label, mode, caps]) => ({
   key, label, mode,
   brightness: caps.includes("B"), speed: caps.includes("S"), color: caps.includes("C"),
-  rainbow: caps.includes("R"), direction: caps.includes("D"),
+  rainbow: caps.includes("R"),
+  // Setas do oficial: 0 esquerda e 1 direita; no Rolagem, 2 cima e 3 baixo
+  directions: !caps.includes("D") ? [] : key === "scrolling" ? [2, 3] : [0, 1],
+  directionFallback: !caps.includes("D") ? null : key === "scrolling" ? 3 : 0,
 }));
+
+const DEFAULTS = { color: "#FF0000", brightness: 5, speed: 3, direction: 0, rainbow: true };
+
+// Quadro como o que o app lê com 04 F5: cor 0xRRGGBB por índice de LED. Aqui, um arco-íris
+// andando da esquerda para a direita, só para ver a prévia mudando sozinha.
+function mirrorFrame(t) {
+  const colors = new Array(143).fill(0);
+  for (const k of KEYS) {
+    const h = ((k.x / 800) * 360 - t * 0.12) % 360;
+    const f = (n) => {
+      const x = (n + h / 60) % 6;
+      return Math.round(255 * Math.max(0, Math.min(1, Math.min(x, 4 - x))));
+    };
+    colors[k.led] = (f(5) << 16) | (f(3) << 8) | f(1);
+  }
+  return colors;
+}
 
 // Resumo do KeysCatalogView do Core (o app real manda as 108 teclas de destino)
 function keyboardMock(sample) {
@@ -101,6 +123,11 @@ export function createMockHost() {
     ? { connected: false, channel: null, name: "", battery: { level: null, cable: false } }
     : { connected: true, channel: deviceParam === "dongle" ? "dongle" : "usb", name: "AKIRA CORE", battery };
 
+  let mirrorTimer = 0;
+  if (params.get("mirror") === "1" && device.channel === "usb") {
+    mirrorTimer = setInterval(() => emit({ type: "mirror", colors: mirrorFrame(performance.now()) }), 120);
+  }
+
   const respond = (message) => {
     switch (message.type) {
       case "ready":
@@ -112,9 +139,11 @@ export function createMockHost() {
             color: params.get("color") ?? "#FF0000",
             brightness: 5,
             speed: 3,
-            reverse: false,
+            direction: Number(params.get("direction") ?? 0),
             rainbow: params.get("rainbow") !== "0",
           },
+          effectSettings: {},
+          effectDefaults: DEFAULTS,
           lightOn: params.get("off") !== "1",
           options: { swapRedBlue: false, simulate: false, startWithWindows: false, batteryAlert: true },
           device,
@@ -140,13 +169,14 @@ export function createMockHost() {
           setTimeout(() => document.querySelector(`#keymap [data-key="${params.get("select")}"]`)
             ?.dispatchEvent(new MouseEvent("click", { bubbles: true })), 50);
         }
-        if (params.get("typing")) {
-          // Letras da fileira do meio e de cima (scan codes 0x10..0x26), como o Raw Input mandaria
-          setInterval(() => {
-            const scan = 0x10 + Math.floor(Math.random() * 0x17);
-            emit({ type: "key", scan, down: true });
-            setTimeout(() => emit({ type: "key", scan, down: false }), 120);
-          }, 260);
+        break;
+      case "view":
+        // O app só lê o teclado com a página de iluminação aberta e o cabo ligado
+        clearInterval(mirrorTimer);
+        if (params.get("mirror") === "1" && message.name === "lighting" && device.channel === "usb") {
+          mirrorTimer = setInterval(() => emit({ type: "mirror", colors: mirrorFrame(performance.now()) }), 120);
+        } else {
+          emit({ type: "mirror", colors: null });
         }
         break;
       case "apply":

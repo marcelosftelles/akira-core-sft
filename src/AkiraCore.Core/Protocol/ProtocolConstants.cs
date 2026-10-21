@@ -49,6 +49,7 @@ public enum Opcode : byte
     DeviceSettings = 0x17, // fcn.004141a0
     MacroBegin = 0x19,     // fcn.0042d5d0; abre a gravação de macros sem o 04 18
     MacroData = 0x15,      // fcn.0042d5d0; [8] = nº de pacotes de 64 bytes
+    ReadLedColors = 0xF5,  // fcn.0042adb0; lê as cores que os LEDs mostram agora (só cabo)
 }
 
 /// <summary>Camada do remapeamento: a normal ou a ativa enquanto o Fn está segurado.</summary>
@@ -134,6 +135,28 @@ public static class PerKeyProtocol
     public const int DongleChunkData = 28;
     public const int DongleChunks = 21;           // 20 × 28 + 1 × 16 = 576
     public static readonly TimeSpan DongleChunkDelay = TimeSpan.FromMilliseconds(2);
+}
+
+/// <summary>
+/// Espelho dos LEDs, só no cabo (fcn.0042adb0). Com a página "Modo de iluminação" aberta e a
+/// fila de comandos vazia, o laço do oficial (fcn.00434230, página 3) pede <c>04 F5</c> com
+/// [8] = 9 (rgb_keyboard="1") e pinta a prévia com o que o teclado devolve. A leitura é a de
+/// fcn.0044f230: 3 ms, SetFeature, 5 ms, até 10 GetFeature com 5 ms entre eles até o ACK
+/// ([4] = 1), depois até 9 GetFeature de 64 bytes com 3 ms antes de cada um (desiste se um
+/// demorar mais de 360 ms). Fecha com <c>04 02</c> com ACK. Sem <c>04 18</c> e sem <c>04 F0</c>.
+/// </summary>
+public static class LedReadProtocol
+{
+    public const byte FeatureChunks = 9;          // 3 no teclado monocromático (rgb_keyboard="0")
+    public const int AckAttempts = 10;
+    public static readonly TimeSpan BeforeRequest = TimeSpan.FromMilliseconds(3);
+    public static readonly TimeSpan AckDelay = TimeSpan.FromMilliseconds(5);
+    public static readonly TimeSpan ChunkDelay = TimeSpan.FromMilliseconds(3);
+    public static readonly TimeSpan ChunkTimeout = TimeSpan.FromMilliseconds(360);  // 0x168
+    // fcn.0042adb0 começa com Sleep(10); a thread do laço roda no mínimo a cada 30 ms
+    // (0x1e gravado em fcn.004169b0 antes do _beginthreadex)
+    public static readonly TimeSpan FrameDelay = TimeSpan.FromMilliseconds(10);
+    public static readonly TimeSpan MinFramePeriod = TimeSpan.FromMilliseconds(30);
 }
 
 /// <summary>Canal do dongle 2.4G: output report de 33 bytes com checksum (fcn.0044f480).</summary>

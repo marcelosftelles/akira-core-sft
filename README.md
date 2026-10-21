@@ -13,7 +13,10 @@ e nada além do que você precisa para deixar o teclado do seu jeito.
 ![Em português](https://img.shields.io/badge/idioma-portugu%C3%AAs-009C3B)
 ![.NET 8](https://img.shields.io/badge/.NET-8-512BD4)
 
-<img src="docs/img/demo.gif" alt="Prévia animada do teclado passando pelos efeitos Rolando, Fluindo, Colorido e Rotacionando" width="640">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/tela-escura.png">
+  <img src="docs/img/tela-clara.png" alt="AkiraCore com o efeito Rolando e a prévia do teclado" width="720">
+</picture>
 
 </div>
 
@@ -24,10 +27,10 @@ e nada além do que você precisa para deixar o teclado do seu jeito.
 
 - **Simples de usar.** Escolha o efeito na lista, ajuste cor, brilho e velocidade, e pronto.
   Não existe botão "Aplicar": o teclado muda assim que você solta o controle.
-- **Prévia ao vivo.** Um desenho do teclado mostra o efeito antes de você olhar para a mesa.
-  Com a janela aberta, as teclas que você toca no AKIRA acendem na prévia nos efeitos que
-  reagem ao toque. Só a posição da tecla vai para a tela; nada é guardado, e na bandeja ou
-  minimizado o app não escuta o teclado.
+- **Prévia igual à do app oficial.** Pelo cabo, o desenho do teclado é um espelho dos LEDs: o app
+  lê do próprio teclado a cor que cada tecla mostra agora, do mesmo jeito que o oficial, então
+  qualquer efeito aparece como ele é de verdade. Pelo dongle, onde o oficial não lê nada, a prévia
+  mostra a cor escolhida ou a paleta arco-íris do app oficial.
 - **Funciona no cabo e no dongle 2.4G.** O app encontra o teclado sozinho e mostra por onde
   está conectado.
 - **Fica na bandeja.** Liga e desliga a luz sem abrir a janela, e pode iniciar escondido junto
@@ -43,7 +46,10 @@ e nada além do que você precisa para deixar o teclado do seu jeito.
   Queda, Colorido, Respiração, Espectro, Para fora, Rolagem, Rolando, Rotacionando, Explodir,
   Lançamento, Ondulações, Fluindo, Pulsante, Inclinação e Vaivém.
 - **Cor fixa ou arco-íris**, nos efeitos que aceitam cor.
-- **Brilho e velocidade** em 6 níveis, e **direção** nos efeitos que andam pelo teclado.
+- **Brilho e velocidade** de 1 a 5, como no oficial, e **direção** com as mesmas setas dele:
+  esquerda e direita em Rolando, Rotacionando, Fluindo e Inclinação; cima e baixo em Rolagem.
+- **Cada efeito lembra os próprios ajustes**, como no app oficial: voltar a um efeito traz a cor,
+  o brilho, a velocidade e a direção que ele tinha.
 - **Desligar a luz** com um clique.
 - **Guia das fitas de LED** dos cantos e da loading bar perto do knob, com os atalhos do teclado
   que controlam cada uma.
@@ -66,24 +72,17 @@ e nada além do que você precisa para deixar o teclado do seu jeito.
 - **Bateria**: o nível aparece na barra lateral e na dica do ícone da bandeja quando o teclado está
   no dongle 2.4G (o teclado só informa por ele), e "carregando" quando o cabo está ligado no PC.
 
-### Alguns dos efeitos
+### A prévia
+
+Copiada do app oficial. Pelo cabo ela se move junto com o teclado, porque mostra as cores lidas
+dos LEDs. Sem essa leitura (dongle), ela fica parada como no oficial:
 
 <table>
   <tr>
-    <td align="center"><img src="docs/img/efeitos/static.png" alt="Efeito Estático em ciano" width="200"><br>Estático</td>
-    <td align="center"><img src="docs/img/efeitos/rolling.png" alt="Efeito Rolando" width="200"><br>Rolando</td>
-    <td align="center"><img src="docs/img/efeitos/flowing.png" alt="Efeito Fluindo" width="200"><br>Fluindo</td>
-    <td align="center"><img src="docs/img/efeitos/rotating.png" alt="Efeito Rotacionando" width="200"><br>Rotacionando</td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/img/efeitos/colourful.png" alt="Efeito Colorido" width="200"><br>Colorido</td>
-    <td align="center"><img src="docs/img/efeitos/spectrum.png" alt="Efeito Espectro" width="200"><br>Espectro</td>
-    <td align="center"><img src="docs/img/efeitos/outward.png" alt="Efeito Para fora" width="200"><br>Para fora</td>
-    <td align="center"><img src="docs/img/efeitos/shuttle.png" alt="Efeito Vaivém" width="200"><br>Vaivém</td>
+    <td align="center"><img src="docs/img/previa-arco-iris.png" alt="Prévia parada com a paleta arco-íris do app oficial" width="340"><br>Arco-íris ligado: paleta do app oficial</td>
+    <td align="center"><img src="docs/img/previa-cor.png" alt="Prévia parada com todas as teclas em ciano" width="340"><br>Cor escolhida</td>
   </tr>
 </table>
-
-As imagens vêm da prévia do próprio app; no teclado, a cor e o brilho reais dependem dos LEDs.
 
 ### Claro ou escuro, como o seu Windows
 
@@ -109,6 +108,7 @@ onde fica cada uma e quais teclas usar.
 | | AkiraCore | Software oficial |
 |---|---|---|
 | Efeitos de iluminação das teclas | ✅ Os 19 | ✅ Os 19 |
+| Prévia: espelho dos LEDs pelo cabo, cor parada no dongle | ✅ | ✅ |
 | Cabo USB e dongle 2.4G | ✅ | ✅ |
 | Bluetooth | ❌ | ❌ |
 | Bandeja do sistema | ✅ | ✅ |
@@ -171,7 +171,8 @@ Não. O controle de iluminação só existe pelo cabo e pelo dongle, e o app é 
 ## É seguro?
 
 O AkiraCore envia ao teclado só os comandos de iluminação, teclas, macros, configurações e reset de
-fábrica, todos copiados do que o software oficial já envia. Ele **nunca** mexe no firmware e não manda comandos desconhecidos.
+fábrica, e a leitura das cores dos LEDs que a prévia usa pelo cabo, todos copiados do que o software
+oficial já envia. Ele **nunca** mexe no firmware e não manda comandos desconhecidos.
 Mesmo assim, é um projeto não oficial: use por sua conta e risco.
 
 Quer ver exatamente o que sai do computador? Ligue Ajustes › Simular envio: o app mostra os bytes
@@ -187,9 +188,10 @@ na tela sem mandar nada ao teclado.
 Funcionando e testado em hardware: os efeitos das teclas pelo cabo e pelo dongle, cor, brilho,
 velocidade, desligar a luz, bandeja e configuração salva.
 
-Novo e ainda sem teste em hardware: teclas, macros e configurações do teclado. Os formatos foram
-conferidos byte a byte no driver oficial (detalhes em [docs/protocolo.md](docs/protocolo.md)), mas
-falta a confirmação no teclado de verdade, principalmente dos botões 4 e 5 do mouse.
+Novo e ainda sem teste em hardware: teclas, macros e configurações do teclado, a prévia que espelha
+os LEDs pelo cabo e as setas para cima e para baixo do Rolagem. Os formatos foram conferidos byte a
+byte no driver oficial (detalhes em [docs/protocolo.md](docs/protocolo.md)), mas falta a
+confirmação no teclado de verdade, principalmente dos botões 4 e 5 do mouse.
 
 Em investigação: se dá para controlar as fitas dos cantos e a loading bar pelo computador. As
 evidências até agora indicam que elas respondem só ao firmware. O andamento está em
@@ -229,8 +231,8 @@ A interface é HTML/CSS/JS em `src/AkiraCore.App/Ui`, embutida no executável e 
 `https://akira.ui` sem tocar na rede. Para revisar o visual sem Windows, sirva essa pasta
 (`python -m http.server` dentro dela) e abra `index.html` num navegador. Sem WebView2 a página usa o
 `dev-mock.js`, que aceita `?view=strips`, `?view=settings`, `?device=dongle|none`, `?off=1`,
-`?effect=static&rainbow=0&color=%2300E5FF`, `?battery=15` e `?cable=1` (bateria na barra lateral), `?log=1`, `?dialog=1`, `?typing=1` (simula teclas
-tocadas no AKIRA, para ver os efeitos reativos), `?view=keys` e `?view=macros`, `?macros=1` (já
+`?effect=static&rainbow=0&color=%2300E5FF`, `?direction=1`, `?battery=15` e `?cable=1` (bateria na barra lateral), `?log=1`, `?dialog=1`, `?mirror=1` (imita
+os quadros que o app lê do teclado pelo cabo; sem ele a prévia fica parada), `?view=keys` e `?view=macros`, `?macros=1` (já
 vem com uma macro e duas teclas mudadas), `?select=55` (abre a tecla de índice 55 em Teclas),
 `?view=colors` com `?colors=1` (esquema de cores em uso) ou `?colors=0` (nenhum esquema) e
 `?text=1` (abre "Inserir texto" em Macros).

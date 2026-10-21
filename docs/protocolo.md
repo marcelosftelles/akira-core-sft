@@ -25,6 +25,56 @@ Com cabo e dongle conectados, o cabo tem prioridade (igual ao app oficial).
 **Dongle:** output report de 33 bytes com conteúdo em `[1..31]` e checksum de 8 bits em `[32]`.
 A confirmação é um input report ecoando `[1..3]`.
 
+### Efeitos: o que o oficial grava e mostra
+
+Conferido no `DeviceDriver.exe` com o Ghidra em 21/10/2026.
+
+- **Cada efeito tem a sua linha** em `t_light_data` (por perfil). `fcn.0042b280` semeia os 19
+  com brilho 5 e velocidade 3 (do `rgb-keyboard.xml`), direção 0, colorful 1 e cor `0x0000FF`
+  (vermelho em COLORREF). Clicar num efeito (`fcn.0042b6c0` → `fcn.0042aa10`) carrega os ajustes
+  dele e envia. O bloco (`fcn.0042afd0` no cabo, `fcn.0042b170` no dongle) leva o que está gravado,
+  inclusive dos controles que o efeito não mostra.
+- **Controles por bit de `config_func`** (`fcn.0042aa10`): `0x01` brilho, `0x02` velocidade,
+  `0x04` setas direita/esquerda, `0x08` setas cima/baixo (só Rolagem), `0x20` "Colorido" e
+  `0x10` painel de cor. O que o efeito não usa some da tela.
+- **Brilho e velocidade vão de 1 a 5**: a página (`fcn.00437540`) cria os dois `MSlider` com
+  mínimo 1 e máximo 5, e arrastar ou rolar nunca sai dessa faixa.
+- **Direção** (`fcn.0042c500`, botões criados em `fcn.00437540`):
+
+  | Botão | Imagem | Valor em `[11]` |
+  |---|---|---|
+  | `0x5c` | `img_direction_left` | 0 |
+  | `0x5b` | `img_direction_right` | 1 |
+  | `0x5d` | `img_direction_top` | 2 |
+  | `0x5e` | `img_direction_bottom` | 3 |
+
+  Rolando, Rotacionando, Fluindo e Inclinação usam 0 e 1; Rolagem usa 2 e 3. A tela marca
+  "direita" só com 1 e "cima" só com 2, então o 0 semeado aparece como "esquerda" ou "baixo" e só
+  muda quando o usuário clica.
+- **Escolher uma cor desmarca "Colorido"** (`fcn.0042bb00` e `fcn.0042b980` chamam
+  `fcn.0042b730` com 0).
+
+### Prévia: leitura das cores dos LEDs (só cabo)
+
+O laço de comandos do oficial (`fcn.00434230`) roda numa thread com período mínimo de 30 ms
+(`fcn.004169b0`). Com a fila vazia, o teclado conectado pelo cabo e a página "Modo de iluminação"
+aberta (página 3), ele chama `fcn.0042adb0`, que lê o que cada LED mostra agora e pinta a prévia:
+
+1. `Sleep(10)`.
+2. `fcn.0044f230`: 3 ms, SetFeature `04 F5` com `[8] = 9` (`rgb_keyboard="1"`; 3 num teclado
+   monocromático), 5 ms, até 10 GetFeature com 5 ms depois de cada um até o ACK (`[4] = 1`), depois
+   até 9 GetFeature de 64 bytes com 3 ms antes de cada um (desiste se um demorar mais de 360 ms).
+   A primeira leitura do oficial pede só 9 bytes e sempre falha; ela não muda o resultado.
+3. O buffer de 576 bytes tem o formato do envio por LED: a cor do LED `i` está em `i×4+1`,
+   `i×4+2` e `i×4+3` (R, G, B). Cada tecla da prévia recebe a cor do seu `light_index`.
+4. `04 02` com ACK (35 ms antes do SetFeature e 35 ms antes do GetFeature). Sem `04 18` e sem
+   `04 F0`.
+
+No dongle não há leitura: a prévia fica parada. `MUI::KeyboardCtrl::SetLightModeColor` (`mui.dll`)
+pinta todas as teclas com a cor escolhida ou, com "Colorido" marcado, uma paleta fixa por uso HID
+(`Ui/preview.js`). Brilho, velocidade e direção não mudam a prévia parada. Na tela do oficial a cor
+aparece pelas legendas transparentes da foto `img_keyboard_layout.png`.
+
 ## Cores por LED (modo personalizado)
 
 Modo `0x80` + buffer de 576 bytes, 4 bytes por LED `[índice, R, G, B]` na posição índice × 4,
@@ -140,8 +190,9 @@ só firmware) e o roteiro de testes, está em [`investigacao-fitas.md`](investig
 
 ## Suposições ainda não confirmadas em hardware
 
-- Faixa do campo de direção (o app usa 0 ou 1).
 - Função exata do comando `0xF0` (enviado porque o app oficial sempre envia).
+- Leitura `04 F5` da prévia e as setas 2 e 3 do Rolagem: copiadas do binário, ainda sem teste no
+  teclado (falta ver o que o firmware devolve durante um efeito animado).
 - Ordem das cores (R, G, B): nenhuma inversão relatada até agora. Se aparecer, há a opção
   Ajustes › Corrigir cores.
 - Remapeamento, macros e configurações gerais: formatos confirmados no binário, ainda sem teste

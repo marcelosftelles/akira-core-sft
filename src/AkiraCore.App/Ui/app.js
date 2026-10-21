@@ -1,6 +1,7 @@
 // Interface do AkiraCore. Fala com o C# por mensagens JSON (WebView2); toda regra de
 // protocolo fica no AkiraCore.Core. Aqui só há estado de tela e a prévia do teclado.
-import { VIEWBOX, BODY, KNOB, ZONES, KEYS, SCAN_CODES } from "./layout.js";
+import { VIEWBOX, BODY, KNOB, ZONES, KEYS } from "./layout.js";
+import { staticKeyColor, MIRROR_STALE_MS } from "./preview.js";
 import { createKeyboardPages } from "./keys.js";
 import { createColorsPage } from "./colors.js";
 
@@ -16,7 +17,10 @@ const PRESETS = [
 
 const state = {
   effects: [],
-  lighting: { effect: "rolling", color: "#FF0000", brightness: 5, speed: 3, reverse: false, rainbow: true },
+  lighting: { effect: "rolling", color: "#FF0000", brightness: 5, speed: 3, direction: 0, rainbow: true },
+  // Ajustes de cada efeito (t_light_data do oficial) e os semeados para efeito nunca mexido
+  effectSettings: {},
+  effectDefaults: { color: "#FF0000", brightness: 5, speed: 3, direction: 0, rainbow: true },
   lightOn: true,
   options: { swapRedBlue: false, simulate: false, startWithWindows: false, batteryAlert: true },
   device: { connected: false, channel: null, name: "", battery: { level: null, cable: false } },
@@ -27,7 +31,6 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
-const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 // --- Mensagens -----------------------------------------------------------------
 
@@ -43,6 +46,8 @@ host.onMessage((message) => {
     case "state":
       state.effects = message.effects;
       state.lighting = message.lighting;
+      state.effectSettings = message.effectSettings ?? {};
+      state.effectDefaults = message.effectDefaults ?? state.effectDefaults;
       state.lightOn = message.lightOn;
       state.options = message.options;
       state.device = message.device;
@@ -64,8 +69,8 @@ host.onMessage((message) => {
     case "log":
       appendLog(message.title, message.lines);
       break;
-    case "key":
-      pressKey(message.scan, message.down);
+    case "mirror":
+      receiveMirror(message.colors ?? null);
       break;
     case "customLights":
       loadCustomLights(message.customLights);
@@ -99,8 +104,15 @@ function loadCustomLights(customLights) {
   colorsPage.load(customLights);
 }
 
+// O efeito em uso guarda os próprios ajustes, como cada linha de t_light_data no oficial
+function rememberEffect() {
+  const { effect, ...settings } = state.lighting;
+  state.effectSettings[effect] = settings;
+}
+
 let applyTimer;
 function applySoon(delay = 180) {
+  rememberEffect();
   clearTimeout(applyTimer);
   applyTimer = setTimeout(() => host.post({ type: "apply", lighting: { ...state.lighting } }), delay);
 }
@@ -156,7 +168,9 @@ effectsList.addEventListener("keydown", (e) => {
 });
 
 function chooseEffect(key) {
-  state.lighting.effect = key;
+  // Escolher um efeito volta aos ajustes dele, como a lista do oficial (fcn.0042aa10)
+  rememberEffect();
+  state.lighting = { effect: key, ...(state.effectSettings[key] ?? state.effectDefaults) };
   state.lightOn = true;
   state.customActive = false;
   colorsPage.deactivate();
@@ -186,6 +200,8 @@ const colorsPage = createColorsPage(host, {
 function showView(view) {
   if (view !== state.view) keyboardPages.leave();
   state.view = view;
+  // O app só lê os LEDs para a prévia com a página de iluminação aberta, como o oficial
+  host.post({ type: "view", name: view });
   for (const section of document.querySelectorAll(".view")) {
     section.hidden = section.id !== `view-${view}`;
   }
@@ -305,6 +321,48 @@ function setDisabled(control, disabled) {
     .forEach((row) => row.setAttribute("aria-disabled", String(disabled)));
 }
 
+// Como o oficial (fcn.0042aa10): o que o efeito não usa some da tela
+function showControl(control, visible) {
+  document.querySelectorAll(`#view-lighting [data-control="${control}"]`)
+    .forEach((row) => { row.hidden = !visible; });
+}
+
+// A primeira linha visível de cada grupo não leva o separador de cima
+function markFirstRows() {
+  for (const group of document.querySelectorAll("#view-lighting .group")) {
+    const first = [...group.querySelectorAll(":scope > .row")].find((row) => !row.hidden);
+    for (const row of group.querySelectorAll(":scope > .row")) row.toggleAttribute("data-first", row === first);
+  }
+}
+
+// Setas do oficial: valor gravado 0 esquerda, 1 direita, 2 cima, 3 baixo (fcn.0042c500)
+const ARROWS = { 0: ["←", "Esquerda"], 1: ["→", "Direita"], 2: ["↑", "Para cima"], 3: ["↓", "Para baixo"] };
+
+function renderDirections(effect) {
+  const group = $("directions");
+  const values = effect.directions ?? [];
+  const wanted = values.join(",");
+  if (group.dataset.values !== wanted) {
+    group.dataset.values = wanted;
+    group.replaceChildren(...values.map((value) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.dataset.direction = String(value);
+      b.textContent = `${ARROWS[value][0]} ${ARROWS[value][1]}`;
+      b.addEventListener("click", () => {
+        state.lighting.direction = value;
+        renderLighting();
+        applySoon();
+      });
+      return b;
+    }));
+  }
+  // Valor que não é de nenhuma seta (o 0 semeado no Rolagem) marca a seta de reserva
+  const shown = values.includes(state.lighting.direction) ? state.lighting.direction : effect.directionFallback;
+  for (const b of group.children) b.setAttribute("aria-checked", String(Number(b.dataset.direction) === shown));
+}
+
 function renderRange(input, value) {
   input.value = value;
   input.style.setProperty("--p", `${(value / Number(input.max)) * 100}%`);
@@ -319,17 +377,19 @@ function renderLighting() {
   $("rainbow").checked = lighting.rainbow;
   renderRange($("brightness"), lighting.brightness);
   renderRange($("speed"), lighting.speed);
-  for (const button of document.querySelectorAll("#view-lighting .segmented button")) {
-    button.setAttribute("aria-checked", String(button.dataset.reverse === String(lighting.reverse)));
-  }
+  renderDirections(effect);
   renderSwatches();
 
+  showControl("color", effect.color);
+  showControl("rainbow", effect.rainbow);
+  showControl("brightness", effect.brightness);
+  showControl("speed", effect.speed);
+  showControl("direction", effect.directions.length > 0);
+  markFirstRows();
+  // Cor continua clicável com o arco-íris ligado: escolher uma cor desliga o arco-íris,
+  // como o painel de cor do oficial (fcn.0042bb00 desmarca o "Colorido")
   const off = !state.lightOn;
-  setDisabled("color", off || !effect.color || (effect.rainbow && lighting.rainbow));
-  setDisabled("rainbow", off || !effect.rainbow);
-  setDisabled("brightness", off || !effect.brightness);
-  setDisabled("speed", off || !effect.speed);
-  setDisabled("direction", off || !effect.direction);
+  for (const control of ["color", "rainbow", "brightness", "speed", "direction"]) setDisabled(control, off);
   renderSelection();
   paintBoards();
 }
@@ -354,14 +414,6 @@ for (const id of ["brightness", "speed"]) {
   // Arrastar só atualiza a prévia; o teclado recebe ao soltar
   input.addEventListener("input", () => { state.lighting[id] = Number(input.value); renderLighting(); });
   input.addEventListener("change", () => applySoon());
-}
-
-for (const button of document.querySelectorAll("#view-lighting .segmented button")) {
-  button.addEventListener("click", () => {
-    state.lighting.reverse = button.dataset.reverse === "true";
-    renderLighting();
-    applySoon();
-  });
 }
 
 // --- Ajustes ---------------------------------------------------------------------
@@ -525,21 +577,11 @@ $("log-clear").addEventListener("click", () => {
 });
 
 // --- Prévia do teclado ---------------------------------------------------------------
+// Igual à do oficial (preview.js): pelo cabo, espelho do que os LEDs mostram; sem leitura,
+// a cor escolhida parada. Nada de simular efeito: o desenho só muda quando a cor muda.
 
 const SVG = "http://www.w3.org/2000/svg";
 const CAP = [240, 240, 243];
-const keyBounds = KEYS.reduce((b, k) => ({
-  minX: Math.min(b.minX, k.x), maxX: Math.max(b.maxX, k.x + k.w),
-  minY: Math.min(b.minY, k.y), maxY: Math.max(b.maxY, k.y + k.h),
-}), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
-
-// Posição normalizada (0 a 1) e uma fase aleatória fixa por tecla
-const keyPoints = KEYS.map((k, i) => ({
-  x: (k.x + k.w / 2 - keyBounds.minX) / (keyBounds.maxX - keyBounds.minX),
-  y: (k.y + k.h / 2 - keyBounds.minY) / (keyBounds.maxY - keyBounds.minY),
-  phase: fract(Math.sin((i + 1) * 12.9898) * 43758.5453),
-  column: Math.round((k.x - keyBounds.minX) / 39),
-}));
 
 function el(name, attrs, parent) {
   const node = document.createElementNS(SVG, name);
@@ -591,157 +633,50 @@ for (const group of document.querySelectorAll("[data-zone-group]")) {
   group.addEventListener("mouseleave", blur);
 }
 
-function fract(v) { return v - Math.floor(v); }
-
-// Faixa de largura w em torno de 0 numa onda periódica
-function band(v, w) {
-  const f = fract(v);
-  const d = Math.min(f, 1 - f);
-  return Math.max(0, 1 - d / w);
-}
-
-function hsl(h) {
-  h = fract(h / 360) * 6;
-  const x = 1 - Math.abs((h % 2) - 1);
-  const [r, g, b] = h < 1 ? [1, x, 0] : h < 2 ? [x, 1, 0] : h < 3 ? [0, 1, x]
-    : h < 4 ? [0, x, 1] : h < 5 ? [x, 0, 1] : [1, 0, x];
-  return [r * 255, g * 255, b * 255];
-}
-
 function hexToRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// Teclas tocadas para os efeitos reativos. As do AKIRA chegam do app (Raw Input) e
-// acendem a tecla certa na prévia; sem ninguém digitando, a prévia toca teclas sozinha.
-const DEMO_AFTER = 5000; // ms sem tecla real até voltar a demonstração
-const keyByScan = new Map(KEYS.map((k, i) => [SCAN_CODES[k.name], i]));
-const events = {
-  flashes: new Float32Array(KEYS.length).fill(-99),
-  bursts: [],
-  pressed: new Set(),
-  last: 0,
-  realAt: -Infinity,
-  ts: 0, // tempo do efeito no último quadro, para datar as teclas reais
-};
+// Último quadro lido do teclado (cor 0xRRGGBB por índice de LED) e quando chegou
+const mirror = { colors: null, at: 0, timer: 0 };
 
-function addPress(i, ts) {
-  events.flashes[i] = ts;
-  const p = keyPoints[i];
-  events.bursts.push({ x: p.x, y: p.y, t: ts });
-  if (events.bursts.length > 12) events.bursts.shift();
+function receiveMirror(colors) {
+  mirror.colors = colors;
+  mirror.at = performance.now();
+  // Se os quadros pararem (cabo solto, envio longo), a prévia volta a ficar parada sozinha
+  clearTimeout(mirror.timer);
+  if (colors) mirror.timer = setTimeout(paintBoards, MIRROR_STALE_MS + 50);
+  paintBoards();
 }
 
-function pressKey(scan, down) {
-  const i = keyByScan.get(scan);
-  if (i === undefined) return;
-  events.realAt = performance.now();
-  if (!down) {
-    events.pressed.delete(i);
-    return;
+function liveColors() {
+  return mirror.colors && performance.now() - mirror.at < MIRROR_STALE_MS ? mirror.colors : null;
+}
+
+// Cor da tecla agora, [r, g, b] de 0 a 255
+function keyColor(key, effect, live) {
+  if (!state.lightOn) return [0, 0, 0];
+  if (live) {
+    const n = live[key.led] ?? 0;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
-  // Repetição automática do Windows não é um novo toque
-  if (events.pressed.has(i)) return;
-  events.pressed.add(i);
-  addPress(i, events.ts);
+  return hexToRgb(staticKeyColor(key, effect, state.lighting));
 }
 
-// Escondido, o app para de escutar: uma tecla solta nesse meio tempo ficaria presa
-document.addEventListener("visibilitychange", () => events.pressed.clear());
-
-function spawnEvents(ts, now) {
-  if (now - events.realAt < DEMO_AFTER || ts - events.last < 0.42) return;
-  events.last = ts;
-  addPress(Math.floor(Math.random() * KEYS.length), ts);
-}
-
-function rings(p, ts, width) {
-  let total = 0;
-  for (const burst of events.bursts) {
-    const age = ts - burst.t;
-    const d = Math.hypot((p.x - burst.x) * 2.4, p.y - burst.y);
-    total += Math.max(0, 1 - Math.abs(d - age * 0.9) / width) * Math.max(0, 1 - age / 1.6);
-  }
-  return Math.min(1, total);
-}
-
-// Aproximação visual de cada efeito do firmware: [intensidade 0..1, cor RGB]
-const EFFECTS = {
-  1: (p, ts, c) => [1, c.pick(p.x * 300)],
-  2: (p, ts, c, i) => [0.05 + Math.exp(-(ts - events.flashes[i]) * 2.4), c.pick(p.x * 300 + ts * 30)],
-  3: (p, ts, c, i) => [1 - 0.95 * Math.exp(-(ts - events.flashes[i]) * 2.4), c.pick(p.x * 300)],
-  4: (p, ts, c) => [0.15 + 0.85 * Math.max(0, Math.sin(ts * 2.4 + p.phase * 6.28)) ** 6, c.pick(p.phase * 360)],
-  5: (p, ts, c) => [0.06 + 0.94 * band(p.y - ts * 0.55 + fract(p.column * 0.37), 0.22), c.pick(p.x * 300)],
-  6: (p, ts) => [1, hsl(p.phase * 360 + ts * 30)],
-  7: (p, ts, c) => [0.06 + 0.94 * (0.5 - 0.5 * Math.cos(ts * 2.2)), c.pick(ts * 25)],
-  8: (p, ts) => [1, hsl(ts * 45)],
-  9: (p, ts, c) => {
-    const d = Math.hypot((p.x - 0.5) * 2.4, p.y - 0.5);
-    return [0.1 + 0.9 * band(d * 0.9 - ts * 0.45 * c.dir, 0.2), c.pick(d * 300 - ts * 60)];
-  },
-  // Rolagem é o único com o par de direções alternativo (config_func 0x08): vertical
-  10: (p, ts, c) => [0.1 + 0.9 * band(p.y * c.dir - ts * 0.32, 0.16), c.pick(p.y * 360)],
-  11: (p, ts, c) => c.rainbow
-    ? [1, hsl((p.x * c.dir - ts * 0.22) * 360)]
-    : [0.18 + 0.82 * band(p.x * c.dir - ts * 0.3, 0.3), c.base],
-  12: (p, ts, c) => {
-    const a = Math.atan2(p.y - 0.5, (p.x - 0.5) * 2.4) / (Math.PI * 2);
-    return c.rainbow ? [1, hsl((a * c.dir - ts * 0.22) * 360)] : [0.18 + 0.82 * band(a * c.dir - ts * 0.25, 0.2), c.base];
-  },
-  13: (p, ts, c) => [0.05 + 0.95 * rings(p, ts, 0.16), c.pick(p.x * 300 + ts * 40)],
-  14: (p, ts, c) => [0.06 + 0.94 * band(1 - p.y - ts * 0.5 + fract(p.column * 0.29), 0.2), c.pick(p.x * 300)],
-  15: (p, ts, c) => [0.12 + 0.88 * rings(p, ts, 0.09), c.pick(p.y * 200 + ts * 40)],
-  16: (p, ts, c) => c.rainbow
-    ? [1, hsl(((p.x + p.y * 0.5) * c.dir - ts * 0.22) * 360)]
-    : [0.18 + 0.82 * band((p.x + p.y * 0.5) * c.dir - ts * 0.3, 0.25), c.base],
-  17: (p, ts, c) => [0.08 + 0.92 * (0.5 + 0.5 * Math.sin(ts * 3)) ** 4, c.pick(ts * 30)],
-  18: (p, ts, c) => [0.12 + 0.88 * band((p.x - p.y * 0.6) * c.dir - ts * 0.3, 0.2), c.pick(p.x * 300)],
-  19: (p, ts, c) => {
-    const pos = 1 - Math.abs(fract(ts * 0.18) * 2 - 1);
-    return [0.06 + 0.94 * Math.max(0, 1 - Math.abs(p.x - pos) / 0.14), c.pick(p.x * 360)];
-  },
-};
-
-const startedAt = performance.now();
-let lastPaint = 0;
-// Tempo do efeito: acumulado quadro a quadro, para mudar a velocidade sem saltar a animação
-const clock = { ts: 0, at: startedAt };
-
-function effectTime(now, speed) {
-  if (reduceMotion.matches) return 1.2;
-  const dt = Math.min(0.1, Math.max(0, (now - clock.at) / 1000));
-  clock.at = now;
-  clock.ts += dt * (0.35 + (speed / 5) * 1.4);
-  return clock.ts;
-}
-
-function paintBoards(now = performance.now()) {
+function paintBoards() {
   const effect = currentEffect();
   if (!effect || boards.length === 0) return;
-  const { lighting } = state;
-  const seconds = (now - startedAt) / 1000;
-  const ts = effectTime(now, lighting.speed);
-  events.ts = ts;
-  const level = state.lightOn ? (lighting.brightness === 0 ? 0.1 : 0.3 + 0.7 * (lighting.brightness / 5)) : 0;
-  const rainbow = !effect.color || (effect.rainbow && lighting.rainbow);
-  const base = hexToRgb(lighting.color);
-  const context = { base, rainbow, dir: lighting.reverse ? -1 : 1, pick: (h) => (rainbow ? hsl(h) : base) };
-  const run = EFFECTS[effect.mode] ?? EFFECTS[1];
-  // Abertura: as teclas acendem da esquerda para a direita no primeiro segundo
-  const sweep = reduceMotion.matches ? 1 : Math.min(1, seconds / 0.9);
-  if (!reduceMotion.matches) spawnEvents(ts, now);
-
+  const live = liveColors();
   for (let i = 0; i < KEYS.length; i++) {
-    const p = keyPoints[i];
-    const [raw, rgb] = run(p, ts, context, i);
-    const power = Math.max(0, Math.min(1, (sweep * 1.3 - p.x) * 4));
-    const intensity = Math.max(0, Math.min(1, raw)) * level * power;
-    const color = `rgb(${rgb.map(Math.round).join(",")})`;
+    const rgb = keyColor(KEYS[i], effect, live);
+    // O brilho do desenho vem da própria cor: LED apagado some, LED fraco brilha pouco
+    const peak = Math.max(...rgb);
+    const intensity = peak / 255;
+    const pure = peak ? rgb.map((v) => Math.round((v / peak) * 255)) : CAP;
+    const color = `rgb(${pure.join(",")})`;
     const tint = 0.22 * intensity;
-    // Tecla segurada no AKIRA fica um pouco mais escura, como se afundasse
-    const shade = events.pressed.has(i) ? 0.84 : 1;
-    const cap = `rgb(${CAP.map((v, k) => Math.round((v + (rgb[k] - v) * tint) * shade)).join(",")})`;
+    const cap = `rgb(${CAP.map((v, k) => Math.round(v + (pure[k] - v) * tint)).join(",")})`;
     for (const board of boards) {
       board.glows[i].setAttribute("fill", color);
       board.glows[i].setAttribute("opacity", board.lit ? intensity.toFixed(3) : "0");
@@ -749,16 +684,6 @@ function paintBoards(now = performance.now()) {
     }
   }
 }
-
-function frame(now) {
-  if (now - lastPaint >= 33) {
-    paintBoards(now);
-    lastPaint = now;
-  }
-  if (!reduceMotion.matches) requestAnimationFrame(frame);
-}
-
-reduceMotion.addEventListener("change", () => { if (!reduceMotion.matches) requestAnimationFrame(frame); });
 
 // --- Início --------------------------------------------------------------------------
 
@@ -772,5 +697,4 @@ function renderAll() {
 buildSwatches();
 buildBrandBoard();
 renderAll();
-requestAnimationFrame(frame);
 host.post({ type: "ready" });

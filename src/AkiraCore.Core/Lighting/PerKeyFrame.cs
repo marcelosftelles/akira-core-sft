@@ -35,6 +35,27 @@ public sealed class PerKeyFrame
         buffer[PerKeyProtocol.SignatureOffset + 1] = ProtocolConstants.SignatureHigh;
         return buffer;
     }
+
+    /// <summary>
+    /// Cor de cada LED (índice 1 a 142; o 0 fica apagado) num buffer lido com <c>04 F5</c>.
+    /// Como fcn.0042adb0: R, G e B em índice × 4 + 1, + 2 e + 3; o byte do índice é ignorado.
+    /// </summary>
+    /// <param name="swapRedBlue">A mesma correção usada no envio (Ajustes › Corrigir cores).</param>
+    public static Rgb[] ReadColors(ReadOnlySpan<byte> buffer, bool swapRedBlue = false)
+    {
+        if (buffer.Length < PerKeyProtocol.BufferLength)
+        {
+            throw new ArgumentException($"O buffer de cores tem {PerKeyProtocol.BufferLength} bytes.", nameof(buffer));
+        }
+        var colors = new Rgb[PerKeyProtocol.MaxLedIndex + 1];
+        for (var index = 1; index <= PerKeyProtocol.MaxLedIndex; index++)
+        {
+            var offset = index * 4;
+            var (r, g, b) = (buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]);
+            colors[index] = swapRedBlue ? new Rgb(b, g, r) : new Rgb(r, g, b);
+        }
+        return colors;
+    }
 }
 
 /// <summary>

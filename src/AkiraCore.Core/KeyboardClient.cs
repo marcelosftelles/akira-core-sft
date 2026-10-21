@@ -47,6 +47,15 @@ public sealed class KeyboardClient(IKeyboardLink link)
     public int? ReadBatteryLevel() =>
         link.HasBatteryQuery ? PacketBuilder.DongleBatteryLevel(link.QueryBattery()) : null;
 
+    /// <summary>
+    /// Cor que cada LED mostra agora (índice = LED), lida como a prévia do oficial faz pelo cabo
+    /// (fcn.0042adb0). Null se o canal não lê (dongle) ou o teclado não respondeu a tempo.
+    /// </summary>
+    public Rgb[]? ReadLedColors(bool swapRedBlue = false) =>
+        link.CanReadLedColors && link.ReadLedColors() is { } buffer
+            ? PerKeyFrame.ReadColors(buffer, swapRedBlue)
+            : null;
+
     public void SetSideLight(SideLightMode mode) =>
         link.SendLightBlock(PacketBuilder.SideLightBlock(mode.Value), LightTarget.SideStrips);
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AkiraCore.Core.Presentation;
 
 namespace AkiraCore.App;
@@ -10,8 +11,14 @@ public sealed class AppSettings
     public string ColorHex { get; set; } = "FF0000";
     public int Brightness { get; set; } = 5;
     public int Speed { get; set; } = 3;
-    public bool ReverseDirection { get; set; }
+    // Valor gravado como no oficial (fcn.0042c500): 0 esquerda, 1 direita, 2 cima, 3 baixo
+    public int Direction { get; set; }
+    // Versões antigas tinham só "invertido"; lido uma vez e apagado ao salvar
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ReverseDirection { get; set; }
     public bool Rainbow { get; set; }
+    // Ajustes de cada efeito, como t_light_data: escolher um efeito volta aos ajustes dele
+    public Dictionary<string, EffectSettingsState> EffectSettings { get; set; } = [];
     public bool SwapRedBlue { get; set; }
     public bool LightOn { get; set; } = true;
     public string SideLightKey { get; set; } = "flowing";

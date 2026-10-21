@@ -4,7 +4,7 @@ namespace AkiraCore.Core.Tests;
 
 public class ConfigFilesTests
 {
-    private static readonly LightingState Lighting = new("rolling", "#FF0000", 5, 3, false, true);
+    private static readonly LightingState Lighting = new("rolling", "#FF0000", 5, 3, 0, true);
 
     private static readonly MacroState Macro = new("m1", "Copiar", [
         new MacroEventState("down", 0xE0, 10), new MacroEventState("down", 0x06, 10),
@@ -75,6 +75,40 @@ public class ConfigFilesTests
 
         var missingActive = Backup() with { ActiveProfileId = "outro" };
         Assert.Throws<ArgumentException>(() => ConfigFiles.ParseBackup(ConfigFiles.BackupToJson(missingActive)));
+    }
+
+    [Fact]
+    public void Backup_KeepsTheSettingsOfEachEffect()
+    {
+        var memory = new Dictionary<string, EffectSettingsState> { ["scrolling"] = new("#00FF00", 2, 4, 3, false) };
+        var backup = Backup() with { Current = Config() with { EffectSettings = memory } };
+
+        var parsed = ConfigFiles.ParseBackup(ConfigFiles.BackupToJson(backup));
+
+        Assert.Equal(memory["scrolling"], parsed.Current.EffectSettings!["scrolling"]);
+    }
+
+    [Fact]
+    public void Backup_FromOlderVersionLoadsWithoutEffectSettings()
+    {
+        // Versão anterior: sem "effectSettings" e com "reverse" no lugar de "direction"
+        var json = ConfigFiles.BackupToJson(Backup())
+            .Replace("\"direction\": 0", "\"reverse\": true")
+            .Replace("\"effectSettings\": null,", "");
+
+        var parsed = ConfigFiles.ParseBackup(json);
+
+        Assert.Null(parsed.Current.EffectSettings);
+        Assert.Equal(0, parsed.Current.Lighting.Direction);
+    }
+
+    [Fact]
+    public void Backup_RejectsEffectSettingsThatCannotBeSent()
+    {
+        var memory = new Dictionary<string, EffectSettingsState> { ["rolling"] = new("#00FF00", 5, 3, 2, true) };
+        var backup = Backup() with { Current = Config() with { EffectSettings = memory } };
+
+        Assert.Throws<ArgumentException>(() => ConfigFiles.ParseBackup(ConfigFiles.BackupToJson(backup)));
     }
 
     [Fact]

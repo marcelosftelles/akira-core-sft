@@ -72,7 +72,7 @@
             <label class="label" for="brightness">Brilho</label>
             <div class="slider">
               <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 3.5v1.5M10 15v1.5M3.5 10H5M15 10h1.5"/></svg>
-              <input type="range" id="brightness" min="0" max="5" step="1">
+              <input type="range" id="brightness" min="1" max="5" step="1">
               <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2.5M10 16v2.5M1.5 10H4M16 10h2.5M4 4l1.8 1.8M14.2 14.2L16 16M4 16l1.8-1.8M14.2 5.8L16 4"/></svg>
             </div>
           </div>
@@ -80,16 +80,13 @@
             <label class="label" for="speed">Velocidade</label>
             <div class="slider">
               <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5"/></svg>
-              <input type="range" id="speed" min="0" max="5" step="1">
+              <input type="range" id="speed" min="1" max="5" step="1">
               <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5l5 5-5 5M10 5l5 5-5 5"/></svg>
             </div>
           </div>
           <div class="row" data-control="direction">
             <span class="label" id="direction-label">Direção</span>
-            <div class="segmented" role="radiogroup" aria-labelledby="direction-label">
-              <button type="button" role="radio" data-reverse="false">Normal</button>
-              <button type="button" role="radio" data-reverse="true">Invertida</button>
-            </div>
+            <div class="segmented" id="directions" role="radiogroup" aria-labelledby="direction-label"></div>
           </div>
         </div>
       </section>

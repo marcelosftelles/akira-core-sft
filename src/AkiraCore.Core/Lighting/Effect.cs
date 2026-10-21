@@ -1,8 +1,9 @@
 namespace AkiraCore.Core.Lighting;
 
 /// <summary>
-/// Bits de config_func gravados pelo app oficial em t_light_data.
-/// Significado inferido pelo padrão dos efeitos.
+/// Bits de config_func gravados pelo app oficial em t_light_data (fcn.0042b280). O que cada
+/// um mostra na tela sai de fcn.0042aa10: 0x01 brilho, 0x02 velocidade, 0x04 setas
+/// direita/esquerda, 0x08 setas cima/baixo, 0x20 "Colorido" e 0x10 o painel de cor.
 /// </summary>
 [Flags]
 public enum EffectCapabilities
@@ -11,14 +12,47 @@ public enum EffectCapabilities
     Brightness = 0x01,
     Speed = 0x02,
     Direction = 0x04,
-    DirectionAlt = 0x08,   // só no Rolagem; o oficial mostra outro par de direções
+    DirectionAlt = 0x08,   // só no Rolagem: setas para cima e para baixo
     Color = 0x10,
     Rainbow = 0x20,
+}
+
+/// <summary>
+/// Valor que o oficial grava no campo direção (fcn.0042c500). Os botões são criados em
+/// fcn.00437540: 0x5b seta para a direita, 0x5c esquerda, 0x5d cima, 0x5e baixo.
+/// </summary>
+public enum EffectDirection
+{
+    Left = 0,
+    Right = 1,
+    Up = 2,
+    Down = 3,
 }
 
 public sealed record Effect(byte Mode, string Key, string Label, EffectCapabilities Capabilities)
 {
     public bool Supports(EffectCapabilities capability) => Capabilities.HasFlag(capability);
+
+    /// <summary>Setas que o oficial mostra para o efeito (fcn.0042aa10), na ordem da tela.</summary>
+    public IReadOnlyList<EffectDirection> Directions =>
+        Supports(EffectCapabilities.Direction) ? [EffectDirection.Left, EffectDirection.Right]
+        : Supports(EffectCapabilities.DirectionAlt) ? [EffectDirection.Up, EffectDirection.Down]
+        : [];
+
+    /// <summary>
+    /// Seta marcada quando nenhuma corresponde ao valor gravado. O efeito nasce com direção 0
+    /// (fcn.0042b280): no Rolagem isso aparece como "para baixo", mas o 0 só muda quando o
+    /// usuário clica numa seta (fcn.0042aa10 marca cima só com 2; esquerda com tudo que não é 1).
+    /// </summary>
+    public EffectDirection? FallbackDirection =>
+        Supports(EffectCapabilities.Direction) ? EffectDirection.Left
+        : Supports(EffectCapabilities.DirectionAlt) ? EffectDirection.Down
+        : null;
+
+    /// <summary>Valores que o oficial pode gravar: o 0 semeado ou o de uma das setas do efeito.</summary>
+    public bool AcceptsDirection(int value) =>
+        value == 0 || Directions.Contains((EffectDirection)value);
+
     public override string ToString() => Label;
 }
 

@@ -5,14 +5,17 @@ namespace AkiraCore.Core.Presentation;
 /// teclas remapeadas e configurações do teclado. Macros e esquemas de cores ficam numa biblioteca
 /// só, como no oficial (t_macro_data não tem coluna de perfil): as teclas de cada perfil apontam
 /// para as mesmas macros gravadas no teclado. <see cref="CustomLightId"/> preenchido = o perfil
-/// usa o esquema de cores por tecla no lugar do efeito.
+/// usa o esquema de cores por tecla no lugar do efeito. <see cref="EffectSettings"/> guarda os
+/// ajustes de cada efeito, como t_light_data (uma linha por efeito e por perfil); arquivo de versão
+/// antiga chega sem ele e cada efeito volta ao padrão semeado.
 /// </summary>
 public sealed record ProfileConfigState(
     LightingState Lighting,
     bool LightOn,
     string? CustomLightId,
     IReadOnlyList<KeyAssignmentState> KeyAssignments,
-    DeviceSettingsState? Device)
+    DeviceSettingsState? Device,
+    IReadOnlyDictionary<string, EffectSettingsState>? EffectSettings = null)
 {
     /// <exception cref="ArgumentException">Algum valor fora da faixa ou referência que não existe.</exception>
     public void Validate(IReadOnlyList<MacroState> macros, IReadOnlyList<CustomLightState> customLights)
@@ -29,6 +32,7 @@ public sealed record ProfileConfigState(
         {
             throw new ArgumentException(ex.Message);
         }
+        EffectSettingsState.ValidateAll(EffectSettings);
         if (CustomLightId is not null && customLights.All(s => s.Id != CustomLightId))
         {
             throw new ArgumentException("O esquema de cores do perfil não existe mais.");

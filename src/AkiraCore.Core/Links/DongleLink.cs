@@ -58,6 +58,12 @@ public sealed class DongleLink(IReportPort port, IDelay? delay = null) : IKeyboa
     // fcn.004357d0: mesma transação dos outros comandos; o nível vem no eco
     public byte[] QueryBattery() => SendReport(PacketBuilder.DongleBatteryQuery());
 
+    // O oficial só lê as cores dos LEDs pelo cabo (fcn.0042adb0 retorna no 2.4G)
+    public bool CanReadLedColors => false;
+
+    public byte[]? ReadLedColors() =>
+        throw new NotSupportedException("O app oficial só lê as cores dos LEDs pelo cabo.");
+
     /// <summary>Envia e espera o eco; devolve o report de confirmação inteiro.</summary>
     private byte[] SendReport(byte[] report)
     {

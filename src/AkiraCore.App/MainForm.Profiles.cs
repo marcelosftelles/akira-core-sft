@@ -10,11 +10,16 @@ namespace AkiraCore.App;
 public sealed partial class MainForm
 {
     private ProfileConfigState CurrentProfileConfig() =>
-        new(_lighting, _settings.LightOn, _settings.CustomLightId, _settings.KeyAssignments.ToList(), _settings.Device);
+        new(_lighting, _settings.LightOn, _settings.CustomLightId, _settings.KeyAssignments.ToList(), _settings.Device,
+            new Dictionary<string, EffectSettingsState>(_settings.EffectSettings));
 
+    /// <remarks>Chamado só com configuração já validada (perfil ou backup).</remarks>
     private void LoadProfileConfig(ProfileConfigState config)
     {
-        _lighting = config.Lighting;
+        // Perfil e backup de versão antiga: sem a memória por efeito e com valores que o oficial não grava
+        _lighting = config.Lighting.Normalized();
+        _settings.EffectSettings = EffectSettingsState.Sanitize(config.EffectSettings);
+        _settings.EffectSettings[_lighting.Effect] = _lighting.Settings;
         _settings.LightOn = config.LightOn;
         _settings.CustomLightId = config.CustomLightId;
         _settings.KeyAssignments = config.KeyAssignments.ToList();

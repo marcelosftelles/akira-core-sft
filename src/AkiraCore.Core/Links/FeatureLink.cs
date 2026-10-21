@@ -99,6 +99,60 @@ public sealed class FeatureLink(IFeaturePort port, IDelay? delay = null) : IKeyb
     public byte[] QueryBattery() =>
         throw new NotSupportedException("O app oficial só lê a bateria pelo dongle.");
 
+    public bool CanReadLedColors => true;
+
+    public byte[]? ReadLedColors()
+    {
+        // fcn.0044f230. A primeira leitura do oficial pede só 9 bytes e sempre falha (o report
+        // tem 65); quem vale são as até 10 tentativas seguintes, com 5 ms depois de cada uma.
+        _delay.Wait(LedReadProtocol.BeforeRequest);
+        if (!port.SetFeature(PacketBuilder.FeatureCommand(Opcode.ReadLedColors, LedReadProtocol.FeatureChunks)))
+        {
+            return null;
+        }
+        _delay.Wait(LedReadProtocol.AckDelay);
+        byte[]? ack = null;
+        for (var attempt = 0; attempt < LedReadProtocol.AckAttempts && ack is null; attempt++)
+        {
+            ack = port.GetFeature(FeatureProtocol.ReportLength);
+            _delay.Wait(LedReadProtocol.AckDelay);
+        }
+        if (ack is null || ack.Length <= FeatureProtocol.AckIndex || ack[FeatureProtocol.AckIndex] != 1)
+        {
+            return null;
+        }
+
+        var buffer = new byte[PerKeyProtocol.BufferLength];
+        var chunks = 0;
+        while (chunks < LedReadProtocol.FeatureChunks)
+        {
+            _delay.Wait(LedReadProtocol.ChunkDelay);
+            var started = Environment.TickCount64;
+            var chunk = port.GetFeature(FeatureProtocol.ReportLength);
+            if (chunk is null || Environment.TickCount64 - started > LedReadProtocol.ChunkTimeout.TotalMilliseconds)
+            {
+                break;
+            }
+            // Pacote incompleto é copiado e encerra a leitura, como no oficial
+            var data = chunk.AsSpan(1, Math.Min(chunk.Length - 1, FeatureProtocol.PayloadLength));
+            data.CopyTo(buffer.AsSpan(chunks * FeatureProtocol.PayloadLength));
+            chunks++;
+            if (data.Length < FeatureProtocol.PayloadLength)
+            {
+                break;
+            }
+        }
+        if (chunks == 0)
+        {
+            return null;
+        }
+
+        // fcn.0042adb0 fecha com 04 02 esperando o ACK (fcn.0044ed60 com o último argumento 1);
+        // o resultado não muda nada: o quadro já foi lido
+        SendOne(PacketBuilder.FeatureCommand(Opcode.End), waitAck: true);
+        return buffer;
+    }
+
     private void Run(IEnumerable<(byte[] Report, bool WaitAck)> steps)
     {
         foreach (var (report, waitAck) in steps)
