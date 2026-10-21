@@ -9,7 +9,8 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
 
 - Nomes de classes, métodos e variáveis em inglês; comentários em português do Brasil.
 - Toda regra de protocolo fica em `AkiraCore.Core` (sem dependência de Windows, testável em Linux).
-- `AkiraCore.App` só tem a janela que hospeda a interface, bandeja, P/Invoke HID e o Laboratório.
+- `AkiraCore.App` só tem a janela que hospeda a interface, bandeja, P/Invoke (HID em `Hid/`,
+  Windows em `Platform/`), o laço ao vivo (`Live/`) e o Laboratório.
 - A interface principal é HTML/CSS/JS em `src/AkiraCore.App/Ui` (sem bibliotecas, sem rede, CSP
   `'self'`), embutida no .exe e servida pelo `EmbeddedUi` em `https://akira.ui` dentro de um WebView2.
   O Laboratório continua WinForms (ferramenta técnica).
@@ -18,22 +19,35 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
   `setDevice {settings}`, `factoryReset`, `diagnose`, `openLab`, `saveCustomLights {schemes}`,
   `useCustomLight {id}`, `textMacro {text, delay}`, `exportBackup`, `importBackup`,
   `exportMacros {macros}`, `importMacros`, `exportColors {id}`, `importColors`, `switchProfile {id}`,
-  `createProfile {name}`, `renameProfile {id, name}`, `deleteProfile {id}`; o app responde `state`
-  (com os blocos `keyboard {catalog, assignments, macros, settings}`, `customLights {schemes, activeId}`
-  e `profiles {list, activeId}`), `device` (com `battery {level, cable}`), `status {kind, text}`,
-  `log {title, lines}`, `customLights`, `profiles`, `macroText {events, skipped, layout}`,
-  `macrosImported {macros}` e `key {scan, down}` (tecla tocada no AKIRA, scan code
-  do conjunto 1 com `0xE000` para prefixo E0; mapa em `SCAN_CODES` no `layout.js`).
+  `createProfile {name}`, `renameProfile {id, name}`, `deleteProfile {id}`, `setLive {live}`,
+  `liveTimer {action}` (start, pause, stop), `testAlert {color, times}`, `setMirror {on}`,
+  `setRules {rules}`, `setHotkeys {hotkeys}`, `setAutoProfile {auto}`, `setProfileApps {id, apps}` e
+  `pickFile {purpose}`; o app responde `state` (com os blocos
+  `keyboard {catalog, assignments, macros, settings}`, `customLights {schemes, activeId}`,
+  `profiles {list (com apps), activeId, auto}`, `live {settings, catalog, lastMode, status}`,
+  `automation {rules, hotkeys, hotkeyActions}` e `mirror`), `device` (com `battery {level, cable}`),
+  `status {kind, text}`, `log {title, lines}`, `customLights`, `profiles`,
+  `macroText {events, skipped, layout}`, `macrosImported {macros}`, `liveFrame {colors}` (quadro
+  que vai ao teclado, LED → #RRGGBB), `liveStatus {status}`, `mirror {colors, problem}`,
+  `automation {automation}`, `filePicked {purpose, path}` e `key {scan, down}` (tecla tocada no
+  AKIRA, scan code do conjunto 1 com `0xE000` para prefixo E0; mapa em `SCAN_CODES` no `layout.js`
+  e `KeyboardLayout.LedOfScanCode` no Core).
   O Raw Input de teclado aceita um destino por processo: há um `RawKeyboardMonitor` só, preso à
-  janela principal; prévia (janela visível) e Laboratório pedem escuta com `Listen()`. Validação em `AkiraCore.Core.Presentation`
+  janela principal; prévia (janela visível), Laboratório e a cena ao vivo com teclas "acender ao
+  tocar" pedem escuta com `Listen()`. Validação em `AkiraCore.Core.Presentation`
   (`LightingState`, `EffectView`, `KeysState.cs`): estado inválido nunca vira envio.
   As páginas Teclas e Macros e o grupo Teclado de Ajustes ficam em `Ui/keys.js`; Cores por tecla
-  em `Ui/colors.js`. Arquivos exportados (backup, macros, cores) são JSON com campo `format`,
+  em `Ui/colors.js`; Ao vivo em `Ui/live.js`; regras de luz e atalhos globais em `Ui/automation.js`. Arquivos exportados (backup, macros, cores) são JSON com campo `format`,
   validados em `ConfigFiles`. Perfis: os campos de `AppSettings` são o perfil ativo em uso e cada
   gravação copia para a lista (`MainForm.Profiles.cs`); macros e esquemas de cores são globais.
   Texto em macro: `TextMacro` no Core, layout do Windows em `WindowsTextLayout` (App).
   Revisão da interface no Windows: `scratchpad` com servidor Node estático e Edge headless
   (`--screenshot` ou CDP); não há Python nesta máquina.
+- `MainForm` é dividido em parciais: `MainForm.cs` (janela, mensagens, envio), `.Library.cs`
+  (esquemas, arquivos), `.Profiles.cs`, `.Live.cs` (modo ao vivo, espelho, cronômetro, avisos) e
+  `.Automation.cs` (regras de luz, perfil automático, atalhos, teclas do app, linha de comando).
+  Todo envio ao teclado passa pelo `_keyboardLock`; o laço ao vivo pega o semáforo por quadro com
+  `Wait(0)` e pula o quadro se outro envio estiver no meio.
 - Visual: estilo Ajustes do macOS, fonte do sistema (Segoe UI Variable), um azul de destaque, tema
   segue o Windows. A prévia do teclado é aproximada; geometria em `Ui/layout.js`, gerada do
   `rgb-keyboard.xml` oficial.
@@ -127,24 +141,69 @@ acento por tecla morta, AltGr = Alt direito), página Cores por tecla (`CustomLi
 `0x80` + `0x23`/`14`; pintar um esquema já o usa no teclado; escolher efeito sai dele) e perfis
 (`ProfileState`; seletor na barra lateral, lista em Ajustes e submenu na bandeja).
 
-**Fase 2, protocolo mapeado na REA em 21/10/2026 e ainda não implementado:**
+**Fase 2 (implementada em 21/10/2026, sem teste em hardware):**
 - `fcn.00434230` é o laço de comandos do oficial. Em espera, roda os modos contínuos: 3 =
-  `fcn.0042adb0` (lê `04 F5` a cada ciclo e pinta o desenho da tela: espelho real dos LEDs, só
-  cabo), 6 = `fcn.00427f60` (luz personalizada em tempo real) e 7 = `fcn.004332c0` (ritmo musical).
-- Ritmo musical: áudio pelo WASAPI (CLSID do MMDeviceEnumerator em `0x574de4`). Dongle
-  `fcn.00432b00`: report `0B 1C 00`, `[4]` modo de frente, `[5]` modo de fundo, `[6]` brilho e,
-  a partir de `[7]`, a altura de cada coluna (o firmware desenha). Cabo `fcn.004328c0`.
-- Cabo, tempo real e música: `04 20` com `[8]` = 3 (ou 8), quadro de 0xC0 (ou 0x200) bytes por
-  `fcn.0044ef50`, depois `04 02`. O formato do quadro está nos blocos que o Ghidra descartou:
-  ler o assembly de `fcn.00427f60`/`fcn.004328c0`.
-- Comando `1F` no dongle (item `0xd` do laço), provavelmente "Reiniciar teclado"; confirmar.
+  `fcn.0042adb0` (espelho dos LEDs pelo `04 F5`, só cabo), 6 = `fcn.00427f60` (luz personalizada
+  em tempo real) e 7 = `fcn.004332c0` (ritmo musical).
+- `04 20` no cabo (`FeatureLink.SendStreamFrame`): `04 20` com `[8]` = 8 (ACK) → 8 pacotes de
+  64 bytes sem ACK, pausa de 5 ms (`fcn.0044ef50`) → `04 02` (ACK). Sem `04 18` e sem `04 F0`.
+  Quadro de 0x200 bytes = lista corrida de `[índice, R, G, B]` na ordem do desenho, zeros no resto
+  (`LiveFrame.ToStreamFrame`). O Ghidra descartou os blocos que montam o quadro no AKIRA; o formato
+  vem de duas fontes independentes da plataforma irmã AULA F108 Pro (capturas USB do app oficial):
+  `Punkster81/AULA-F108-Driver` e o controlador AulaF108Pro do OpenRGB
+  (`hcode10/OpenRGB-With-AulaF108Pro-support`). Ambas batem com o `[8]` e o tamanho lidos no
+  binário do AKIRA. `[8]` = 3 (0xC0) é a variante dos teclados monocromáticos, como no `04 F5`.
+  O OpenRGB reenvia o cabeçalho a cada 2 s: sem quadro novo o teclado pode voltar sozinho ao efeito.
+- `04 F5` no cabo (`FeatureLink.ReadLedColors`): `04 F5` com `[8]` = 9 → ACK (até 10 leituras de
+  5 ms) → 9 GET_REPORT → `04 02`. Tabela igual à do `04 23`; `PacketBuilder.ParseLedColors`.
+- Ritmo musical: áudio pelo WASAPI loopback (`Live/AudioCapture.cs`, COM direto, sem biblioteca),
+  FFT e faixas em `SpectrumAnalyzer` (Core). Cabo: barras desenhadas no PC (`MusicVisualizer`) e
+  enviadas pelo `04 20`, como `fcn.004328c0`. Dongle (`fcn.00432b00`): report `0B 1C 00`, `[4]`
+  modo de frente, `[5]` modo de fundo, `[6]` brilho e, a partir de `[7]`, a altura de cada coluna.
+  **A confirmar na REA:** quantas colunas o oficial preenche e a escala da altura (o app usa 18
+  colunas e 0 a 6, calibráveis no Laboratório e salvos em `DongleMusic` no settings.json), e os
+  valores dos modos de frente e fundo (o app manda 0 e 0).
+- `1F` no dongle (`DongleLink.SendKeyboardReset`, só no Laboratório): é o "Reset Keyboard" do
+  oficial (`fcn.00414600`, textos 165/166). No cabo o mesmo botão roda a tarefa 6 (regrava as
+  tabelas de teclas), então a hipótese é que o `1F` zere o remapeamento no firmware. Confirmar.
+- Página Ao vivo (`LiveSettingsState`, `LiveEngine`, `LiveRunner`): Teclas animadas (luz
+  personalizada do oficial: fixa, respirar, piscar, espectro, onda, acender ao tocar), Ritmo
+  musical, Cor da tela, Uso da CPU e Cronômetro (F1 a F12). Um modo por vez, global (fora dos
+  perfis). Escolher efeito ou esquema sai do modo ao vivo. Ao sair do app, a luz normal é
+  reenviada. Avisos (`AlertFlash`): no cabo piscam pelo `04 20` (nada gravado); no dongle a cor
+  fica fixa pelo tempo do aviso e a luz volta.
+- Espelho (`LedMirror`): Iluminação › "Mostrar o teclado de verdade", lê o `04 F5` a cada 200 ms
+  com a janela à vista e sem modo ao vivo transmitindo.
 - Fora de escopo: tela TFT (`screen="0"`): `fcn.00422ac0`/`00423360` (GIF, `04 72` e `7F 03`) e
-  `fcn.00423a80`/`00423bb0` (relógio, `04 28` e `0C 10`).
+  `fcn.00423a80`/`00423bb0` (relógio, `04 28` e `0C 10`). O "handshake" do Punkster81
+  (`04 18`, `04 28`, `00 01 5A …`) é a sincronia do relógio dessa tela; o app não manda.
 
-**Fase 3, novas:** perfil automático por programa, regras de luz (bloqueio, tela desligada,
-horário), atalhos globais, linha de comando e efeitos vivos pelo `04 20` (tela, CPU, avisos).
+**Fase 3 (implementada em 21/10/2026, sem teste no Windows):**
+- Perfil automático (`ProfileApps`, `ForegroundWatcher` com `SetWinEventHook`): cada perfil tem
+  `Apps` (executáveis); troca com 1,5 s de espera e ignora a janela do próprio AkiraCore. A troca
+  de perfil só regrava o que muda (teclas, configurações, luz).
+- Regras de luz (`LightRules`, `SessionWatcher`): apagar com o Windows bloqueado
+  (`WTSRegisterSessionNotification`), com a tela desligada (`GUID_CONSOLE_DISPLAY_STATE`) e
+  horário noturno (apagar ou brilho 1). Passam por cima em `CurrentLightingAction` sem mudar a
+  configuração.
+- Atalhos globais (`Hotkeys`, `GlobalHotkeys` com `RegisterHotKey`): ligar/desligar luz, efeito
+  seguinte/anterior, brilho, perfil seguinte/anterior, modo ao vivo e abrir a janela.
+- Teclas com ação do app (`AppKeyActions`, ação "app" em `KeyAssignmentState`): abrir programa,
+  site, digitar texto (SendInput Unicode, depois de soltar Ctrl/Alt/Shift), multimídia estendida,
+  bloquear, suspender e desligar (30 s, apertar de novo cancela). A tecla vira um atalho reservado
+  pelo formato `02` já confirmado: F13 a F24 com Ctrl+Alt+Shift, Ctrl+Alt, Ctrl+Shift ou Alt+Shift
+  (48 vagas), registrado pelo app. Nada do slot `05 02` do oficial é enviado.
+- Linha de comando (`CommandLine` no Core, `Program.cs`, `CommandChannel`): pipe nomeado só do
+  usuário e da sessão. Sem instância aberta, abre uma na bandeja e entrega o pedido; quem chamou
+  recebe a resposta e o código de saída (0 ok, 1 erro, 2 argumento inválido).
+## Situação atual (21/10/2026)
 
-## Situação atual (17/10/2026)
+**Próximo passo da Fase 2:** usuário testa no Windows, na ordem: Laboratório seção 6 (ler cores
+`04 F5` com um efeito animado; quadro de teste `04 20`; barras `0B` no dongle ajustando colunas e
+altura; `1F`), depois a página Ao vivo e a automação. Na REA, ler `fcn.00432b00` para fechar
+colunas, escala e modos do ritmo no dongle, e conferir o quadro em `fcn.00427f60`.
+
+## Situação anterior (17/10/2026)
 
 Funcionando em hardware: efeitos das teclas pelo cabo e pelo dongle, cor, brilho, velocidade,
 desligar, bandeja, configuração salva.
@@ -181,8 +240,9 @@ LED) em `fcn.0042adb0`; reset de fábrica oficial mapeado e implementado
 (`KeyboardClient.RestoreFactoryDefaults`, botão "Restaurar padrão de fábrica"): `0F` no dongle
 + iluminação padrão; no cabo só a iluminação padrão, porque o oficial não tem comando.
 
-**Próximo passo:** usuário roda T0 a T3 e envia os logs. Depois, implementar a leitura `04 F5`
-no Laboratório (só cabo) e comparar a tabela antes e depois de `Fn + Z` e `Fn + /?`.
+**Próximo passo (fitas):** usuário roda T0 a T3 e envia os logs. A leitura `04 F5` já está no
+Laboratório (seção 6, só cabo): comparar a tabela antes e depois de `Fn + Z` e `Fn + /?` (a
+leitura lista também LEDs sem tecla que estiverem acesos).
 
 Se encontrar os índices: criar `ExtraZone` (canto esquerdo, canto direito, mini fita) no Core,
 UI com cor por zona, e explicar o trade-off (no modo `0x80` as teclas ficam com cor fixa).

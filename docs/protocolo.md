@@ -1,6 +1,6 @@
 # Protocolo do AKIRA CORE
 
-Notas técnicas do protocolo (iluminação, teclas, macros e configurações gerais), reconstruído por engenharia reversa estática do
+Notas técnicas do protocolo (iluminação, teclas, macros, configurações gerais, tempo real e ritmo musical), reconstruído por engenharia reversa estática do
 `DeviceDriver.exe` v1.0.0.0 (instalador oficial `AKIRA_CORE_Driver-1_0_0_0.exe`). Cada offset de
 byte tem teste em `tests/AkiraCore.Core.Tests` citando a função de origem no binário oficial.
 
@@ -119,6 +119,75 @@ O AkiraCore considera "carregando" quando o cabo (0C45:8006) aparece no Windows 
 dongle mesmo com o cabo ligado. Em Ajustes › Diagnóstico sai a resposta crua da bateria: comparar
 com e sem o cabo mostra se algum outro byte indica carga.
 
+## Fluxo em tempo real (04 20, só cabo)
+
+Usado pelo oficial nos modos contínuos "Luz personalizada" (`fcn.00427f60`) e "Ritmo musical" no
+cabo (`fcn.004328c0`), pela função de envio rápido `fcn.0044ef50` (`Sleep(5)` entre pacotes).
+Nada é gravado na memória do teclado: só os LEDs mudam.
+
+| Passo | Report | ACK |
+|---|---|---|
+| 1 | `04 20` com `[8] = 8` | Sim (até 20 leituras de 5 ms) |
+| 2 | 8 pacotes de 64 bytes: o quadro de 0x200 bytes | Não |
+| 3 | `04 02` | Sim |
+
+Sem `04 18` antes e sem `04 F0` depois. O quadro é uma lista corrida de `[índice, R, G, B]`, sem
+lacunas (o índice vai no próprio item), e zeros depois do último. A variante `[8] = 3` com 0xC0
+bytes é a dos teclados monocromáticos, como no `04 F5`.
+
+**De onde vem o formato do quadro:** o Ghidra descartou os blocos que montam o quadro no binário
+do AKIRA, mas o tamanho e a contagem de pacotes foram lidos nele. O conteúdo vem de duas
+implementações independentes para o AULA F108 Pro (mesma plataforma, mesmo driver com 0x60 a 0x70
+de deslocamento), ambas feitas a partir de capturas USB do app oficial:
+[Punkster81/AULA-F108-Driver](https://github.com/Punkster81/AULA-F108-Driver) e o controlador
+AulaF108Pro do OpenRGB ([hcode10/OpenRGB-With-AulaF108Pro-support](https://github.com/hcode10/OpenRGB-With-AulaF108Pro-support)).
+As duas concordam entre si. O OpenRGB reenvia o cabeçalho a cada 2 s, sinal de que sem quadros
+novos o teclado volta sozinho ao efeito gravado; o AkiraCore manda quadros contínuos e, ao parar,
+reenvia a iluminação normal.
+
+## Leitura das cores dos LEDs (04 F5, só cabo)
+
+`fcn.0042adb0`, modo contínuo 3 do oficial (pinta o desenho com o que o teclado mostra):
+`04 F5` com `[8] = 9` → ACK (até 10 leituras de 5 ms) → 9 GET_REPORT de 64 bytes → `04 02`. Não usa
+`04 18`. A resposta é a mesma tabela de 576 bytes do `04 23`: `[i, R, G, B]` na posição `i × 4`.
+No app: Iluminação › "Mostrar o teclado de verdade" e Laboratório › seção 6.
+
+## Ritmo musical
+
+O oficial capta o áudio do PC pelo WASAPI (CLSID do MMDeviceEnumerator em `0x574de4`).
+
+| Canal | Envio | Função |
+|---|---|---|
+| Cabo | Barras desenhadas no PC, pelo `04 20` | `fcn.004328c0` |
+| Dongle | Report `0B 1C 00` + `[4]` modo de frente, `[5]` modo de fundo, `[6]` brilho, `[7]` em diante a altura de cada coluna; o firmware desenha | `fcn.00432b00` |
+
+**A confirmar no binário:** quantas colunas o oficial preenche (cabem 25), a escala da altura e os
+valores dos modos de frente e fundo. O AkiraCore usa 18 colunas (a largura da matriz de LEDs),
+altura de 0 a 6 (fileiras) e modos 0, e o Laboratório deixa calibrar as quatro coisas.
+
+## Reset Keyboard (1F, dongle)
+
+"Reset Keyboard" do oficial (`fcn.00414600`, textos 165/166, item `0xd` do laço `fcn.00434230`):
+report único `1F` no 2.4G. No cabo, o mesmo botão roda a tarefa 6 (`fcn.00434840`), que regrava as
+duas tabelas de teclas. Hipótese: o `1F` zera o remapeamento guardado no firmware (não é o `0F`,
+que apaga tudo). Só o Laboratório envia, com confirmação.
+
+## Teclas com ação do app (abrir programa, site, texto…)
+
+O oficial grava nesses casos um slot próprio (tipos 8 a 10, 12 e 13, `05 02 …` e `07 …`) que só
+funciona com o app dele aberto. O AkiraCore não manda esses slots: a tecla vira um atalho comum,
+pelo formato `02 <modificadores> <código>` já confirmado, e o app registra o atalho no Windows.
+
+| Vaga | Modificadores | Tecla |
+|---|---|---|
+| 0 a 11 | Ctrl + Alt + Shift esquerdos (`07`) | F13 a F24 (`68` a `73`) |
+| 12 a 23 | Ctrl + Alt (`05`) | F13 a F24 |
+| 24 a 35 | Ctrl + Shift (`03`) | F13 a F24 |
+| 36 a 47 | Alt + Shift (`06`) | F13 a F24 |
+
+As vagas seguem a ordem: camada normal antes da Fn, depois o índice da tecla. Com o app fechado a
+tecla manda um atalho que ninguém usa e nada acontece.
+
 ## Fitas laterais
 
 O app oficial tem a página "Modo de luz lateral" pronta, mas desligada no XML deste modelo
@@ -144,6 +213,7 @@ só firmware) e o roteiro de testes, está em [`investigacao-fitas.md`](investig
 - Função exata do comando `0xF0` (enviado porque o app oficial sempre envia).
 - Ordem das cores (R, G, B): nenhuma inversão relatada até agora. Se aparecer, há a opção
   Ajustes › Corrigir cores.
+- `04 20`, `04 F5`, `0B 1C 00` e `1F`: sem teste em hardware (ver as seções acima).
 - Remapeamento, macros e configurações gerais: formatos confirmados no binário, ainda sem teste
   em hardware. Em especial: botões 4 e 5 do mouse (o oficial chama o bit `0x08` de "Botão 5";
   pela convenção HID ele é o 4) e o efeito do tempo de resposta 0.

@@ -263,7 +263,11 @@ public sealed class LiveRunner(LiveEngine engine, Func<IKeyboardLink?> openLink,
         var musicOnDongle = !link.HasStreaming && link.HasMusicReport && source is MusicVisualizer;
         if (!link.HasStreaming && !musicOnDongle)
         {
-            Report(LiveSendState.WrongChannel, "Este modo só funciona pelo cabo USB");
+            // Só um aviso no dongle: ele vai pela luz normal (MainForm); aqui é só a prévia
+            if (source is not null)
+            {
+                Report(LiveSendState.WrongChannel, "Este modo só funciona pelo cabo USB");
+            }
             return SendResult.Skipped;
         }
         // Outro envio (luz, teclas, bateria) no meio: este quadro fica de fora
