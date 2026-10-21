@@ -3,6 +3,13 @@
 App próprio para controlar a iluminação do teclado AKIRA CORE (ADAMANTIUN GAMER) no Windows.
 Protocolo reconstruído por engenharia reversa do driver oficial v1.0.0.0.
 
+## Download
+
+Baixe o `AkiraCore.exe` na página de [Releases](https://github.com/marcelosftelles/akira-core-sft/releases).
+É um arquivo único que não precisa de instalação nem do .NET; o `.sha256` ao lado serve para
+conferir o download. Para publicar uma versão nova: `git tag v0.2.0 && git push origin v0.2.0`
+(o workflow `.github/workflows/release.yml` compila, roda os testes e anexa o .exe).
+
 ## Interface
 
 Visual inspirado nos Ajustes do macOS: barra lateral com os 19 efeitos, painel com uma prévia
