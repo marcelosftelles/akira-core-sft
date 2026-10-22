@@ -70,10 +70,54 @@ aberta (página 3), ele chama `fcn.0042adb0`, que lê o que cada LED mostra agor
 4. `04 02` com ACK (35 ms antes do SetFeature e 35 ms antes do GetFeature). Sem `04 18` e sem
    `04 F0`.
 
-No dongle não há leitura: a prévia fica parada. `MUI::KeyboardCtrl::SetLightModeColor` (`mui.dll`)
-pinta todas as teclas com a cor escolhida ou, com "Colorido" marcado, uma paleta fixa por uso HID
-(`Ui/preview.js`). Brilho, velocidade e direção não mudam a prévia parada. Na tela do oficial a cor
-aparece pelas legendas transparentes da foto `img_keyboard_layout.png`.
+Confirmado no teclado em 21/10/2026: a leitura acompanha a animação (os efeitos animados deram 21
+quadros diferentes em 21). Cada leitura leva ~290 ms; os LEDs chegam em pedaços, com atraso de 0,
+30, 66 e ~107 ms conforme o índice (medido no Espectro, que é uniforme). Índices sem tecla devolvem
+`94 00 BE`.
+
+No dongle não há leitura. O oficial deixa a prévia parada (`MUI::KeyboardCtrl::SetLightModeColor`
+da `mui.dll`: a cor escolhida ou uma paleta fixa por uso HID); o AkiraCore simula o efeito com as
+tabelas medidas abaixo.
+
+### Como cada efeito aparece nos LEDs (medido pelo cabo)
+
+Gravação da seção 6 do Laboratório (`docs/gravacoes/efeitos-cabo-2026-10-21.json`, brilho 5,
+velocidade 3), reduzida por `tools/efeitos/gerar-tabelas.mjs` a: fase por LED, velocidade, forma
+de onda do brilho e modo de cor. A prévia (`Ui/preview.js`) refaz os quadros com isso; o erro
+médio contra a gravação fica entre 1 e 5 (de 253) nos efeitos determinísticos.
+
+- **Cor dos efeitos que giram** (Colorido, Espectro, Para fora, Rolagem, Rolando, Rotacionando,
+  Vaivém, em arco-íris): matiz HSV com valor cheio, um canal sempre em `FD` (253). A matiz de cada
+  LED anda em linha reta no tempo.
+- **Estático em arco-íris**: gradiente radial, azul no centro (tecla U) e vermelho nas bordas, numa
+  roda de 12 cores com a soma dos canais fixa (`FD0000`, `C13B00`, `778500`, `3BC100`, `00FD00`…).
+  Fica na tabela como cor fixa por LED.
+- **Respiração**: o teclado inteiro com brilho `253 × L²`, L numa onda triangular (~4,6 s por ciclo
+  na velocidade 3); em arco-íris a cor é um gradiente horizontal fixo.
+- **Cor única** (Para fora, Rolagem, Rolando, Rotacionando): onda triangular de 245 a 26; no
+  Para fora, Rolando e Rotacionando o mapa é o mesmo do arco-íris com o dobro da velocidade.
+- **Vaivém**: fileiras alternadas andam em sentidos opostos.
+- **Fluindo**: um rastro de ~9 teclas (brilho cai 29,5 por tecla) percorre as fileiras da esquerda
+  para a direita, ~22 teclas por segundo; as teclas extras (Del, Home, End…) entram perto da
+  vizinha da mesma fileira. Em arco-íris cada passada sorteia uma cor.
+- **Inclinação**: dente de serra em diagonal, período de ~5 colunas.
+- **Brilhante, Queda, Pulsante**: cada tecla tem um dente de serra com fase (e no Brilhante e no
+  Pulsante, período) próprios; em arco-íris a cor é sorteada a cada volta de uma paleta de cores
+  com nome escalada para 253 (olivedrab `6B8E23` vira `6A8C22`, blueviolet `8A2BE2` vira `882AE0`).
+- **Apagar ao tocar em arco-íris**: cada tecla com uma cor fixa dessa paleta.
+- **Direção**: inverte o sentido (1 nos efeitos esquerda/direita, 2 no Rolagem; 0 e 3 iguais).
+- **Velocidade**: só muda o ritmo. Rolando: 77,5°/s (1), 132,9°/s (3) e 309,9°/s (5); 2 e 4
+  interpolados pelo intervalo entre passos.
+- **Brilho 1** devolveu todos os LEDs em zero na leitura.
+- **Acender ao tocar** (cor única, velocidade 3, teclas gravadas): só a tecla tocada muda. Ela
+  fica cheia (253) enquanto está apertada e, ao soltar, apaga em `(1 - t/2,03 s)²`; tocar de novo
+  recomeça. Contando o atraso de cada pedaço da leitura (0, 30, 66 e ~107 ms), o modelo da
+  prévia erra no máximo 6/253 por quadro.
+- **Apagar ao tocar** (arco-íris, teclas gravadas): a tecla apaga ao apertar e volta devagar ao
+  soltar, em `(t/T)²` com T perto de 2 s, já com outra cor da paleta (pior quadro 7/253 no brilho).
+- Acender ao tocar em arco-íris, Apagar ao tocar em cor única, Explodir, Lançamento e
+  Ondulações ficaram sem teclas na gravação: a prévia usa um desenho aproximado (disco, luz
+  subindo pela coluna, anel) até haver gravação.
 
 ## Cores por LED (modo personalizado)
 
@@ -163,6 +207,14 @@ conectar e depois a cada 15 s, apenas quando o canal ativo é o 2.4G:
 A leitura do oficial (`fcn.00451190`) tira o Report ID 0, então no código dele o nível aparece em
 `[3]`. Nível 0 é ignorado (mantém o anterior); acima de 100 vira 100.
 
+O nível cru oscila: o usuário viu 91 e, 15 s depois, 87 (21/10/2026). O teclado deve calcular a
+porcentagem pela tensão, que cai com a corrente dos LEDs. O oficial mostra o valor cru; o
+AkiraCore passa pelo `BatteryLevelFilter`: mediana das últimas 5 leituras (até 2 min), e o
+número na tela só muda com pelo menos 3 leituras na janela. Sem o cabo ele só desce, a não ser
+que a mediana da janela cheia suba 5 pontos (carregador fora do PC); com o cabo, só sobe. Ligar
+ou tirar o cabo, ou o teclado dormir mais de 2 min, recomeça a janela (a leitura logo ao acordar
+vem alta, da tensão em repouso). O Diagnóstico continua mostrando o cru.
+
 **Carregando:** o protocolo do oficial não tem esse dado. Ele chama `BatteryCtrl::SetBatteryInfo(nível, 0)`
 sempre, e na `mui.dll` o segundo argumento 1 é o que desenha o raio (`icon_charge.png`); nunca é usado.
 O AkiraCore considera "carregando" quando o cabo (0C45:8006) aparece no Windows e lê o nível pelo
@@ -191,8 +243,8 @@ só firmware) e o roteiro de testes, está em [`investigacao-fitas.md`](investig
 ## Suposições ainda não confirmadas em hardware
 
 - Função exata do comando `0xF0` (enviado porque o app oficial sempre envia).
-- Leitura `04 F5` da prévia e as setas 2 e 3 do Rolagem: copiadas do binário, ainda sem teste no
-  teclado (falta ver o que o firmware devolve durante um efeito animado).
+- Setas 2 e 3 do Rolagem pela tela do app (a gravação do Laboratório já mostrou o firmware
+  respondendo a elas). A leitura `04 F5` da prévia foi confirmada em 21/10/2026.
 - Ordem das cores (R, G, B): nenhuma inversão relatada até agora. Se aparecer, há a opção
   Ajustes › Corrigir cores.
 - Remapeamento, macros e configurações gerais: formatos confirmados no binário, ainda sem teste

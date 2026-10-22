@@ -11,6 +11,8 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>AkiraCore</AssemblyName>
     <RootNamespace>AkiraCore.App</RootNamespace>
+    <!-- Ícone do .exe no Explorer; gerado por tools/icones/gerar-icones.mjs -->
+    <ApplicationIcon>Assets\AkiraCore.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -26,6 +28,8 @@
   <ItemGroup>
     <!-- Interface HTML embutida no executável e servida pelo EmbeddedUi -->
     <EmbeddedResource Include="Ui\*.html;Ui\*.css;Ui\*.js" LogicalName="Ui/%(Filename)%(Extension)" />
+    <!-- Ícones da janela e da bandeja, lidos pelo AppIcons -->
+    <EmbeddedResource Include="Assets\*.ico" LogicalName="Assets/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- O pacote do WebView2 referencia o controle de WPF em todo app .NET 5+. Este app é só

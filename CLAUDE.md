@@ -18,15 +18,28 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
   `setDevice {settings}`, `factoryReset`, `diagnose`, `openLab`, `saveCustomLights {schemes}`,
   `useCustomLight {id}`, `textMacro {text, delay}`, `exportBackup`, `importBackup`,
   `exportMacros {macros}`, `importMacros`, `exportColors {id}`, `importColors`, `switchProfile {id}`,
-  `createProfile {name}`, `renameProfile {id, name}`, `deleteProfile {id}`; o app responde `state`
+  `createProfile {name}`, `renameProfile {id, name}`, `deleteProfile {id}`,
+  `window {action}` (minimize, maximize, close); o app responde `state`
   (com `lighting {effect, color, brightness, speed, direction, rainbow}`, `effectSettings` (ajustes
   de cada efeito), `effectDefaults` e os blocos `keyboard {catalog, assignments, macros, settings}`,
   `customLights {schemes, activeId}` e `profiles {list, activeId}`), `device` (com
   `battery {level, cable}`), `status {kind, text}`, `log {title, lines}`, `customLights`,
   `profiles`, `macroText {events, skipped, layout}`, `macrosImported {macros}` e
-  `mirror {colors}` (cor 0xRRGGBB por índice de LED lida com `04 F5`; null = parou).
+  `mirror {colors}` (cor 0xRRGGBB por índice de LED lida com `04 F5`; null = parou),
+  `key {scan, down}` (tecla do AKIRA pelo Raw Input, scan code do conjunto 1 com 0xE0xx para o
+  prefixo E0; nome → scan em `SCAN_CODES` do `layout.js`) e `window {custom, maximized, active}`.
+  Barra de título própria (`MainForm.Frame.cs`): `WM_NCCALCSIZE` tira a faixa do Windows e a
+  página desenha a dela (`.titlebar`, `app-region: drag` com `IsNonClientRegionSupportEnabled`,
+  botões que mandam `WM_SYSCOMMAND`). Uma faixa da altura da borda fica acima do WebView2 para
+  redimensionar por cima, pintada com as cores da página. Sem WebView2 ou sem suporte a
+  app-region, `UseNativeFrame` volta à barra nativa. Testado em 21/10/2026: arrastar, maximizar,
+  restaurar, minimizar e fechar para a bandeja.
+  Ícones em `src/AkiraCore.App/Assets` (`app.svg` geral, `tray.svg`, `AkiraCore.ico`,
+  `tray-white.ico`/`tray-black.ico` pelo tema da barra de tarefas, `AppIcons`), gerados por
+  `node tools/icones/gerar-icones.mjs` (Edge headless, cada tamanho alinhado ao pixel).
   O Raw Input de teclado aceita um destino por processo: há um `RawKeyboardMonitor` só, preso à
-  janela principal; só o Laboratório pede escuta com `Listen()` (a prévia não escuta teclas).
+  janela principal. Quem precisa pede escuta com `Listen()` (contada): o Laboratório (monitor e
+  gravação) e a prévia (`UpdatePreviewKeys`, só com a página de iluminação à vista).
   Validação em `AkiraCore.Core.Presentation` (`LightingState`, `EffectSettingsState`, `EffectView`,
   `KeysState.cs`): estado inválido nunca vira envio.
   As páginas Teclas e Macros e o grupo Teclado de Ajustes ficam em `Ui/keys.js`; Cores por tecla
@@ -43,9 +56,18 @@ SHA-256 `6e691f42e2a16873188f989f7249aea97f20c9e703ad43dabf3a95b65ff0b351`).
   cada efeito lembra os próprios ajustes (`EffectSettingsState`, semeados como `fcn.0042b280`),
   controles que o efeito não usa somem, brilho e velocidade de 1 a 5, setas com os valores de
   `fcn.0042c500`. Prévia: pelo cabo, espelho dos LEDs lido com `04 F5` (`MainForm.Preview.cs`, só
-  com a página de iluminação aberta e sem envio em andamento, parado com o Laboratório aberto);
-  no dongle, parada na cor ou na paleta arco-íris da `mui.dll` (`Ui/preview.js`). Não há mais
-  simulação de efeito. A foto `img_keyboard_layout.png` do oficial não foi copiada (direito autoral).
+  com a página de iluminação aberta e sem envio em andamento, parado com o Laboratório aberto;
+  confirmado em hardware em 21/10/2026: a leitura acompanha a animação, ~1 quadro a cada 290 ms).
+  Sem leitura (dongle), a prévia simula o efeito com tabelas medidas no teclado
+  (`Ui/effect-tables.js`, gerado por `tools/efeitos/gerar-tabelas.mjs` a partir de
+  `docs/gravacoes/efeitos-cabo-2026-10-21.json`, gravação da seção 6 do Laboratório). Modelo em
+  `Ui/preview.js`: fase por LED + velocidade + forma de onda + cor (matiz HSV, cor escolhida,
+  paleta sorteada por volta ou cor fixa); erro medido contra a gravação em `docs/protocolo.md`.
+  Efeitos que reagem a tecla: a prévia usa as teclas tocadas no AKIRA (mensagem `key`) e, sem
+  ninguém digitando por 5 s, toca teclas sozinha. Acender/Apagar ao tocar seguem a gravação;
+  Explodir, Lançamento e Ondulações são desenho aproximado (a página avisa embaixo do teclado).
+  O usuário rejeitou a prévia parada do oficial ("não condiz com a cor real do LED").
+  A foto `img_keyboard_layout.png` do oficial não foi copiada (direito autoral).
 - Todo offset de byte novo ganha teste em `tests/AkiraCore.Core.Tests` citando a função de origem
   no binário oficial (ex.: `fcn.0042b170`).
 - Segurança: comandos de iluminação, o reset de fábrica oficial (`0F` no dongle, pedido do
@@ -68,6 +90,8 @@ O teste em hardware é feito pelo usuário no Windows; o ambiente de nuvem só c
 Para revisar a interface aqui: `python3 -m http.server` dentro de `src/AkiraCore.App/Ui` e
 screenshots com o Playwright do ambiente (`/opt/node-tools/node_modules/playwright`); o
 `dev-mock.js` faz o papel do app (parâmetros listados no README; `?mirror=1` imita o espelho).
+Tabelas da prévia: `node tools/efeitos/gerar-tabelas.mjs <gravação.json>` regenera
+`Ui/effect-tables.js` (o gerador imprime o erro de cada efeito).
 Engenharia reversa na nuvem: instalador enviado pelo usuário, `innoextract` (apt) e Ghidra 11.4.2
 headless (baixado das releases do GitHub) com um script que descompila tudo para texto.
 O pacote do WebView2 referencia o controle WPF sempre; o `.csproj` remove essa referência
@@ -130,6 +154,9 @@ Ferramenta de análise usada: disassembler descartável em .NET com a biblioteca
 15 s e ao conectar. O protocolo não informa carga: o oficial passa sempre 0 em
 `SetBatteryInfo(nível, carregando)` da `mui.dll`. O app mostra "carregando" quando o cabo aparece
 no Windows e lê o nível pelo dongle mesmo com o cabo ligado. Diagnóstico mostra a resposta crua.
+O nível cru oscila alguns pontos entre leituras (usuário: 91 → 87 em 15 s); tela, bandeja e aviso
+usam o `BatteryLevelFilter` (Core): mediana de 5 leituras, muda só com 3 leituras na janela, sem
+cabo só desce (sobe com a janela cheia e folga de 5), com cabo só sobe.
 Instalador original fica em `ExeOriginal/` (fora do git). Engenharia reversa nova: usar a REA.
 
 ## Roteiro de features (pedido do usuário em 21/10/2026: tudo, por fases)
@@ -206,6 +233,14 @@ atalhos no app.
 
 ## Pendências menores
 
-- Testar em hardware o espelho da prévia (`04 F5`) e as setas 2/3 do Rolagem (antes o app mandava 1).
+- Testar em hardware as setas 2/3 do Rolagem na tela do app (a gravação já mostrou 2 invertendo o 0/3).
+- Explodir, Lançamento e Ondulações: a prévia é um desenho aproximado (disco, luz subindo pela
+  coluna, anel), porque a gravação de 21/10/2026 não tem teclas nesses efeitos. Falta gravar
+  cada um com "Gravar este efeito" (seção 6, 15 s) digitando devagar, com arco-íris ligado e
+  desligado, e trocar o modelo em `Ui/preview.js` pelo medido. Apagar ao tocar com cor única e
+  Acender ao tocar com arco-íris também não têm teclas gravadas (cor da volta e tempo de volta
+  ainda supostos).
+- Brilho 1 devolveu tudo zero na leitura `04 F5`; a prévia usa brilho/5. Confirmar a olho se o
+  brilho 1 acende no teclado.
 - Significado do opcode `0xF0` (enviado porque o oficial sempre envia).
 - `SideLightCatalog` e o envio lateral só existem no Laboratório; remover se a hipótese da matriz se confirmar.

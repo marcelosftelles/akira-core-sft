@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="src/AkiraCore.App/Assets/app.svg" width="96" height="96" alt="">
+
 # AkiraCore
 
 **Um app leve e de código aberto para controlar a iluminação, as teclas e as macros do teclado
@@ -27,10 +29,10 @@ e nada além do que você precisa para deixar o teclado do seu jeito.
 
 - **Simples de usar.** Escolha o efeito na lista, ajuste cor, brilho e velocidade, e pronto.
   Não existe botão "Aplicar": o teclado muda assim que você solta o controle.
-- **Prévia igual à do app oficial.** Pelo cabo, o desenho do teclado é um espelho dos LEDs: o app
-  lê do próprio teclado a cor que cada tecla mostra agora, do mesmo jeito que o oficial, então
-  qualquer efeito aparece como ele é de verdade. Pelo dongle, onde o oficial não lê nada, a prévia
-  mostra a cor escolhida ou a paleta arco-íris do app oficial.
+- **Prévia que mostra o que o teclado faz.** Pelo cabo, o desenho do teclado é um espelho dos
+  LEDs: o app lê do próprio teclado a cor que cada tecla mostra agora, do mesmo jeito que o
+  oficial. Pelo dongle, onde não dá para ler, a prévia anima o efeito com medidas tiradas do
+  teclado de verdade (o oficial deixa a prévia parada).
 - **Funciona no cabo e no dongle 2.4G.** O app encontra o teclado sozinho e mostra por onde
   está conectado.
 - **Fica na bandeja.** Liga e desliga a luz sem abrir a janela, e pode iniciar escondido junto
@@ -74,13 +76,15 @@ e nada além do que você precisa para deixar o teclado do seu jeito.
 
 ### A prévia
 
-Copiada do app oficial. Pelo cabo ela se move junto com o teclado, porque mostra as cores lidas
-dos LEDs. Sem essa leitura (dongle), ela fica parada como no oficial:
+Pelo cabo ela se move junto com o teclado, porque mostra as cores lidas dos LEDs (~3 quadros por
+segundo). Sem essa leitura (dongle), ela refaz o efeito a partir de uma gravação feita no AKIRA
+pelo cabo: posição, cor, ritmo e direção de cada efeito foram medidos, não imaginados (detalhes
+em [docs/protocolo.md](docs/protocolo.md#como-cada-efeito-aparece-nos-leds-medido-pelo-cabo)).
 
 <table>
   <tr>
-    <td align="center"><img src="docs/img/previa-arco-iris.png" alt="Prévia parada com a paleta arco-íris do app oficial" width="340"><br>Arco-íris ligado: paleta do app oficial</td>
-    <td align="center"><img src="docs/img/previa-cor.png" alt="Prévia parada com todas as teclas em ciano" width="340"><br>Cor escolhida</td>
+    <td align="center"><img src="docs/img/previa-estatico.png" alt="Prévia do Estático em arco-íris: azul no centro e vermelho nas bordas" width="340"><br>Estático em arco-íris, como o teclado acende</td>
+    <td align="center"><img src="docs/img/previa-rolando.png" alt="Prévia do Rolando em arco-íris: faixas de cor da esquerda para a direita" width="340"><br>Rolando, animado como no teclado</td>
   </tr>
 </table>
 
@@ -108,7 +112,8 @@ onde fica cada uma e quais teclas usar.
 | | AkiraCore | Software oficial |
 |---|---|---|
 | Efeitos de iluminação das teclas | ✅ Os 19 | ✅ Os 19 |
-| Prévia: espelho dos LEDs pelo cabo, cor parada no dongle | ✅ | ✅ |
+| Prévia: espelho dos LEDs pelo cabo | ✅ | ✅ |
+| Prévia animada no dongle | ✅ | ❌ (parada) |
 | Cabo USB e dongle 2.4G | ✅ | ✅ |
 | Bluetooth | ❌ | ❌ |
 | Bandeja do sistema | ✅ | ✅ |
@@ -188,8 +193,8 @@ na tela sem mandar nada ao teclado.
 Funcionando e testado em hardware: os efeitos das teclas pelo cabo e pelo dongle, cor, brilho,
 velocidade, desligar a luz, bandeja e configuração salva.
 
-Novo e ainda sem teste em hardware: teclas, macros e configurações do teclado, a prévia que espelha
-os LEDs pelo cabo e as setas para cima e para baixo do Rolagem. Os formatos foram conferidos byte a
+Novo e ainda sem teste em hardware: teclas, macros e configurações do teclado e as setas para cima
+e para baixo do Rolagem. A leitura dos LEDs pelo cabo (espelho da prévia) foi confirmada. Os formatos foram conferidos byte a
 byte no driver oficial (detalhes em [docs/protocolo.md](docs/protocolo.md)), mas falta a
 confirmação no teclado de verdade, principalmente dos botões 4 e 5 do mouse.
 
@@ -232,12 +237,20 @@ A interface é HTML/CSS/JS em `src/AkiraCore.App/Ui`, embutida no executável e 
 (`python -m http.server` dentro dela) e abra `index.html` num navegador. Sem WebView2 a página usa o
 `dev-mock.js`, que aceita `?view=strips`, `?view=settings`, `?device=dongle|none`, `?off=1`,
 `?effect=static&rainbow=0&color=%2300E5FF`, `?direction=1`, `?battery=15` e `?cable=1` (bateria na barra lateral), `?log=1`, `?dialog=1`, `?mirror=1` (imita
-os quadros que o app lê do teclado pelo cabo; sem ele a prévia fica parada), `?view=keys` e `?view=macros`, `?macros=1` (já
+os quadros que o app lê do teclado pelo cabo; sem ele a prévia é simulada), `?view=keys` e `?view=macros`, `?macros=1` (já
 vem com uma macro e duas teclas mudadas), `?select=55` (abre a tecla de índice 55 em Teclas),
 `?view=colors` com `?colors=1` (esquema de cores em uso) ou `?colors=0` (nenhum esquema) e
-`?text=1` (abre "Inserir texto" em Macros).
+`?text=1` (abre "Inserir texto" em Macros). A barra de título própria aceita `?maximized=1`,
+`?inactive=1` (janela sem foco) e `?frame=native` (sem ela, como quando o WebView2 é antigo).
+
+Os ícones ficam em `src/AkiraCore.App/Assets`: `app.svg` é o ícone geral e `tray.svg` o da
+bandeja. `node tools/icones/gerar-icones.mjs` refaz os `.ico` (app, bandeja clara e escura) com o
+Edge que já vem no Windows; `--previa=arquivo.html` gera uma folha com todos os tamanhos.
 
 Em Ajustes há também o **Laboratório**, com as ferramentas usadas na investigação do protocolo.
+A seção 6 dele grava, pelo cabo, o que os LEDs mostram em cada efeito (todos ou um só) e salva um
+JSON em Documentos (`akira-gravacao-efeitos-*.json`). `node tools/efeitos/gerar-tabelas.mjs
+<arquivo>` transforma a gravação nas tabelas da prévia (`Ui/effect-tables.js`).
 
 ## Aviso legal
 

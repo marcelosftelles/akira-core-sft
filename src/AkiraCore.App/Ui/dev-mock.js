@@ -6,6 +6,7 @@
 // na página Teclas). view aceita keys, macros, colors e settings. battery (nível, ex.: 15) e
 // cable=1 (cabo ligado junto com o dongle) mostram a bateria na barra lateral. colors=1 traz
 // um esquema de cores por tecla em uso (colors=0 nenhum esquema); text=1 abre "Inserir texto".
+// frame=native esconde a barra de título própria; maximized=1 e inactive=1 mudam os botões dela.
 // O catálogo é uma cópia do EffectCatalog do Core apenas para esta prévia.
 import { KEYS } from "./layout.js";
 
@@ -123,6 +124,12 @@ export function createMockHost() {
     ? { connected: false, channel: null, name: "", battery: { level: null, cable: false } }
     : { connected: true, channel: deviceParam === "dongle" ? "dongle" : "usb", name: "AKIRA CORE", battery };
 
+  const windowState = {
+    custom: params.get("frame") !== "native",
+    maximized: params.get("maximized") === "1",
+    active: params.get("inactive") !== "1",
+  };
+
   let mirrorTimer = 0;
   if (params.get("mirror") === "1" && device.channel === "usb") {
     mirrorTimer = setInterval(() => emit({ type: "mirror", colors: mirrorFrame(performance.now()) }), 120);
@@ -164,10 +171,18 @@ export function createMockHost() {
             "SET 000BFF0000000000000105030000000000...",
           ] });
         }
+        emit({ type: "window", ...windowState });
         if (params.get("dialog")) setTimeout(() => document.getElementById("reset").click(), 50);
         if (params.get("select")) {
           setTimeout(() => document.querySelector(`#keymap [data-key="${params.get("select")}"]`)
             ?.dispatchEvent(new MouseEvent("click", { bubbles: true })), 50);
+        }
+        break;
+      case "window":
+        // Aqui não há janela: só alterna o botão maximizar para ver os dois desenhos
+        if (message.action === "maximize") {
+          windowState.maximized = !windowState.maximized;
+          emit({ type: "window", ...windowState });
         }
         break;
       case "view":

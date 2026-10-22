@@ -1,7 +1,9 @@
 // Interface do AkiraCore. Fala com o C# por mensagens JSON (WebView2); toda regra de
 // protocolo fica no AkiraCore.Core. Aqui só há estado de tela e a prévia do teclado.
-import { VIEWBOX, BODY, KNOB, ZONES, KEYS } from "./layout.js";
-import { staticKeyColor, MIRROR_STALE_MS } from "./preview.js";
+import { VIEWBOX, BODY, KNOB, ZONES, KEYS, SCAN_CODES } from "./layout.js";
+import {
+  simulatedKeyColor, isAnimated, isReactive, APPROXIMATE_EFFECTS, PRESS_MEMORY_MS, MIRROR_STALE_MS,
+} from "./preview.js";
 import { createKeyboardPages } from "./keys.js";
 import { createColorsPage } from "./colors.js";
 
@@ -72,6 +74,9 @@ host.onMessage((message) => {
     case "mirror":
       receiveMirror(message.colors ?? null);
       break;
+    case "key":
+      pressKey(message.scan, message.down);
+      break;
     case "customLights":
       loadCustomLights(message.customLights);
       renderSelection();
@@ -87,6 +92,9 @@ host.onMessage((message) => {
       else showStatus("ok", `Texto inserido, ${where}`);
       break;
     }
+    case "window":
+      renderWindow(message);
+      break;
     case "macrosImported": {
       const added = keyboardPages.importMacros(message.macros);
       showStatus(added === message.macros.length ? "ok" : "error",
@@ -115,6 +123,24 @@ function applySoon(delay = 180) {
   rememberEffect();
   clearTimeout(applyTimer);
   applyTimer = setTimeout(() => host.post({ type: "apply", lighting: { ...state.lighting } }), delay);
+}
+
+// --- Barra de título -----------------------------------------------------------
+
+// Os botões mandam o mesmo comando dos nativos; o app responde com o estado da janela
+for (const button of document.querySelectorAll("[data-window]")) {
+  button.addEventListener("click", () => host.post({ type: "window", action: button.dataset.window }));
+}
+
+function renderWindow({ custom, maximized, active }) {
+  const root = document.documentElement;
+  root.dataset.frame = custom ? "custom" : "native";
+  root.toggleAttribute("data-maximized", maximized);
+  root.toggleAttribute("data-inactive", !active);
+  const label = maximized ? "Restaurar" : "Maximizar";
+  const button = $("caption-maximize");
+  button.title = label;
+  button.setAttribute("aria-label", label);
 }
 
 // --- Barra lateral -------------------------------------------------------------
@@ -198,7 +224,10 @@ const colorsPage = createColorsPage(host, {
 });
 
 function showView(view) {
-  if (view !== state.view) keyboardPages.leave();
+  if (view !== state.view) {
+    keyboardPages.leave();
+    releaseAllTouches();
+  }
   state.view = view;
   // O app só lê os LEDs para a prévia com a página de iluminação aberta, como o oficial
   host.post({ type: "view", name: view });
@@ -206,6 +235,7 @@ function showView(view) {
     section.hidden = section.id !== `view-${view}`;
   }
   renderSelection();
+  paintBoards();
 }
 
 function renderDevice() {
@@ -577,8 +607,8 @@ $("log-clear").addEventListener("click", () => {
 });
 
 // --- Prévia do teclado ---------------------------------------------------------------
-// Igual à do oficial (preview.js): pelo cabo, espelho do que os LEDs mostram; sem leitura,
-// a cor escolhida parada. Nada de simular efeito: o desenho só muda quando a cor muda.
+// Pelo cabo, espelho do que os LEDs mostram; sem leitura, o efeito simulado com as tabelas
+// medidas no teclado (preview.js e effect-tables.js).
 
 const SVG = "http://www.w3.org/2000/svg";
 const CAP = [240, 240, 243];
@@ -633,13 +663,98 @@ for (const group of document.querySelectorAll("[data-zone-group]")) {
   group.addEventListener("mouseleave", blur);
 }
 
-function hexToRgb(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
 // Último quadro lido do teclado (cor 0xRRGGBB por índice de LED) e quando chegou
 const mirror = { colors: null, at: 0, timer: 0 };
+
+// Relógio da simulação: o teclado recomeça o efeito a cada envio, a prévia também
+const sim = { start: performance.now(), signature: "", frame: 0 };
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
+function simulationTime(now) {
+  const { effect, color, rainbow, speed, direction } = state.lighting;
+  const signature = [effect, color, rainbow, speed, direction, state.lightOn].join("|");
+  if (signature !== sim.signature) {
+    sim.signature = signature;
+    sim.start = now;
+    // O teclado recomeça o efeito do zero: toques antigos não contam mais
+    touches.list = [];
+    touches.demoAt = 0;
+  }
+  return reduceMotion.matches ? 0 : now - sim.start;
+}
+
+// Toques para os efeitos que reagem a tecla, no relógio da simulação. Os do AKIRA chegam do
+// app (Raw Input); sem ninguém digitando, a prévia toca teclas sozinha para não ficar escura.
+const DEMO_AFTER_MS = 5000; // sem tecla de verdade nesse tempo, a demonstração volta
+const DEMO_EVERY_MS = 1100;
+const DEMO_HOLD_MS = 140;
+const keyByScan = new Map(KEYS.map((k) => [SCAN_CODES[k.name], k]));
+const touches = { list: [], cycles: new Map(), realAt: -Infinity, demoAt: 0 };
+
+function addTouch(key, ms) {
+  const open = touches.list.findLast((t) => t.led === key.led);
+  // Repetição automática do Windows não é um toque novo
+  if (open && open.up === null) return null;
+  // Cada toque conta uma volta da tecla: com arco-íris, a cor muda a cada uma
+  const cycle = (touches.cycles.get(key.led) ?? 0) + 1;
+  touches.cycles.set(key.led, cycle);
+  const touch = { led: key.led, x: key.x + key.w / 2, y: key.y + key.h / 2, at: ms, up: null, cycle };
+  touches.list.push(touch);
+  return touch;
+}
+
+function releaseTouches(ms, led = null) {
+  for (const touch of touches.list) {
+    if (touch.up === null && (led === null || touch.led === led)) touch.up = Math.max(ms, touch.at);
+  }
+}
+
+function pressKey(scan, down) {
+  const key = keyByScan.get(scan);
+  if (!key || reduceMotion.matches) return;
+  const now = performance.now();
+  touches.realAt = now;
+  const ms = simulationTime(now);
+  // Soltar sempre conta; apertar só guarda toque nos efeitos que reagem a tecla
+  if (!down) releaseTouches(ms, key.led);
+  else if (isReactive(currentEffect())) addTouch(key, ms);
+  pruneTouches(ms);
+  paintBoards(now);
+}
+
+// Com a janela escondida ou outra página aberta o app para de escutar: uma tecla solta
+// nesse meio tempo ficaria acesa para sempre
+function releaseAllTouches() {
+  releaseTouches(simulationTime(performance.now()));
+}
+
+function playDemo(now, ms) {
+  for (const touch of touches.list) {
+    if (touch.demo && touch.up === null && ms - touch.at >= DEMO_HOLD_MS) touch.up = touch.at + DEMO_HOLD_MS;
+  }
+  if (now - touches.realAt < DEMO_AFTER_MS || ms - touches.demoAt < DEMO_EVERY_MS) return;
+  touches.demoAt = ms;
+  const touch = addTouch(KEYS[Math.floor(Math.random() * KEYS.length)], ms);
+  if (touch) touch.demo = true;
+}
+
+// Guarda só o que ainda muda o desenho e o último toque de cada tecla (a cor dela)
+function pruneTouches(ms) {
+  const last = new Map(touches.list.map((t, i) => [t.led, i]));
+  touches.list = touches.list.filter((t, i) =>
+    t.up === null || ms - t.up < PRESS_MEMORY_MS || last.get(t.led) === i);
+}
+
+function renderPreviewNote(effect, live) {
+  const note = $("preview-note");
+  let text = "";
+  if (isReactive(effect) && !live && state.lightOn && !reduceMotion.matches) {
+    text = "Toque teclas no AKIRA para ver o efeito aqui. Sem ninguém digitando, a prévia toca teclas sozinha.";
+    if (APPROXIMATE_EFFECTS.has(effect.key)) text += " O desenho deste efeito ainda é aproximado.";
+  }
+  if (note.textContent !== text) note.textContent = text;
+  note.hidden = !text;
+}
 
 function receiveMirror(colors) {
   mirror.colors = colors;
@@ -655,21 +770,38 @@ function liveColors() {
 }
 
 // Cor da tecla agora, [r, g, b] de 0 a 255
-function keyColor(key, effect, live) {
+function keyColor(key, effect, live, ms) {
   if (!state.lightOn) return [0, 0, 0];
   if (live) {
     const n = live[key.led] ?? 0;
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
-  return hexToRgb(staticKeyColor(key, effect, state.lighting));
+  return simulatedKeyColor(key, effect, state.lighting, ms, touches.list);
 }
 
-function paintBoards() {
+// Quadros novos só quando algo mexe: efeito animado ou que reage a tecla, sem espelho, na
+// página de iluminação
+function wantsAnimation(effect, live) {
+  return state.lightOn && !live && !reduceMotion.matches && !document.hidden
+    && state.view === "lighting" && (isAnimated(effect, state.lighting) || isReactive(effect));
+}
+
+function paintBoards(now = performance.now()) {
   const effect = currentEffect();
   if (!effect || boards.length === 0) return;
   const live = liveColors();
+  const ms = simulationTime(now);
+  renderPreviewNote(effect, live);
+  const animating = wantsAnimation(effect, live);
+  if (animating && isReactive(effect)) {
+    playDemo(now, ms);
+    pruneTouches(ms);
+  }
+  if (animating && !sim.frame) {
+    sim.frame = requestAnimationFrame((t) => { sim.frame = 0; paintBoards(t); });
+  }
   for (let i = 0; i < KEYS.length; i++) {
-    const rgb = keyColor(KEYS[i], effect, live);
+    const rgb = keyColor(KEYS[i], effect, live, ms);
     // O brilho do desenho vem da própria cor: LED apagado some, LED fraco brilha pouco
     const peak = Math.max(...rgb);
     const intensity = peak / 255;
@@ -684,6 +816,12 @@ function paintBoards() {
     }
   }
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) releaseAllTouches();
+  paintBoards();
+});
+reduceMotion.addEventListener("change", () => paintBoards());
 
 // --- Início --------------------------------------------------------------------------
 

@@ -71,8 +71,59 @@ button, input { font: inherit; color: inherit; }
 .app {
   display: grid;
   grid-template-columns: 236px 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100vh;
 }
+
+/* --- Barra de título --------------------------------------------------------
+   A janela não tem a barra do Windows: esta faixa continua a barra lateral e o painel
+   até o topo, arrasta a janela (app-region) e tem os botões no tamanho dos nativos. */
+
+.titlebar {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  height: 32px;
+  background: linear-gradient(to right, var(--chrome) 236px, var(--ground) 236px);
+  app-region: drag;
+}
+/* Sem barra própria (WebView2 antigo) a janela usa a do Windows */
+:root[data-frame="native"] .titlebar { display: none; }
+
+.caption-buttons { display: flex; app-region: no-drag; }
+
+.caption {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: default;
+  transition: background 0.1s linear, color 0.1s linear;
+}
+.caption svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.caption:hover { background: var(--fill); }
+.caption:active { background: var(--fill-strong); }
+.caption:focus-visible { outline-offset: -3px; }
+/* Fechar fica vermelho como no Windows; aqui ele só esconde a janela na bandeja */
+.caption.close:hover { background: #c42b1c; color: #ffffff; }
+.caption.close:active { background: #c42b1c; color: rgba(255, 255, 255, 0.7); }
+/* Janela sem foco: botões apagados, como os nativos */
+:root[data-inactive] .caption:not(:hover) { color: var(--ink-2); opacity: 0.7; }
+
+.glyph-restore { display: none; }
+:root[data-maximized] .glyph-maximize { display: none; }
+:root[data-maximized] .glyph-restore { display: block; }
 
 /* --- Barra lateral --------------------------------------------------------- */
 
@@ -80,9 +131,10 @@ button, input { font: inherit; color: inherit; }
   background: var(--chrome);
   display: flex;
   flex-direction: column;
-  padding: 18px 10px 12px;
+  padding: 2px 10px 12px; /* a barra de título já dá o respiro de cima */
   min-height: 0;
 }
+:root[data-frame="native"] .sidebar { padding-top: 18px; }
 
 .brand { padding: 2px 10px 18px; }
 
@@ -242,9 +294,10 @@ button, input { font: inherit; color: inherit; }
 
 .detail {
   overflow-y: auto;
-  padding: 26px 36px 40px;
+  padding: 4px 36px 40px;
   scrollbar-gutter: stable;
 }
+:root[data-frame="native"] .detail { padding-top: 26px; }
 
 .view, .log { max-width: 720px; margin: 0 auto; }
 
@@ -700,11 +753,13 @@ meter { width: 120px; height: 8px; }
 
 /* Janela estreita: lista de efeitos vira faixa horizontal */
 @media (max-width: 760px) {
-  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  .titlebar { background: var(--chrome); }
   .sidebar { min-width: 0; }
   .sidebar { padding-bottom: 8px; }
   .effects { display: flex; overflow-x: auto; overflow-y: hidden; gap: 4px; flex: none; }
   .effects .nav-item { white-space: nowrap; }
   .nav-bottom { display: flex; gap: 4px; box-shadow: none; padding-top: 4px; }
   .detail { padding: 20px; }
+  :root[data-frame="native"] .detail { padding-top: 20px; }
 }

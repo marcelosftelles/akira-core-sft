@@ -54,6 +54,14 @@ public sealed class LabForm : Form
     private StateSnapshot? _lastSnapshot;
     private int _snapshotCount;
 
+    // 6. Gravação dos efeitos: cada efeito aplicado e lido com 04 F5 pelo cabo
+    private readonly Button _recordButton = new() { Text = "Gravar todos os efeitos", AutoSize = true };
+    private readonly Label _recordNow = new() { AutoSize = true, Font = new Font("Segoe UI", 12f, FontStyle.Bold) };
+    private readonly ComboBox _recordEffect = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
+    private CancellationTokenSource? _recordCts;
+    private RecordedVariant? _recording;
+    private System.Diagnostics.Stopwatch _recordClock = new();
+
     private readonly TextBox _log = new()
     {
         Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false,
@@ -67,6 +75,7 @@ public sealed class LabForm : Form
         _currentLighting = currentLighting;
         _rawKeyboard = rawKeyboard;
         Text = "AKIRA CORE · Laboratório";
+        Icon = AppIcons.App();
         Font = new Font("Segoe UI", 10f);
         var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 800);
         Size = new Size(Math.Min(900, workArea.Width), Math.Min(860, workArea.Height - 40));
@@ -91,6 +100,7 @@ public sealed class LabForm : Form
         BuildSweepSection(sections);
         BuildLedSection(sections);
         BuildSnapshotSection(sections);
+        BuildRecordSection(sections);
 
         var clear = new Button { Text = "Limpar log", AutoSize = true };
         var copy = new Button { Text = "Copiar log", AutoSize = true };
@@ -185,6 +195,31 @@ public sealed class LabForm : Form
             "estado das fitas. Sem a opção abaixo é só leitura (GET_REPORT), nada é enviado."));
         parent.Controls.Add(Row(_snapshotButton, _snapshotWithAcks));
     }
+
+    private void BuildRecordSection(Control parent)
+    {
+        _recordButton.Click += async (_, _) => await ToggleRecordingAsync();
+        var plan = EffectRecordingPlan.Build();
+        var minutes = plan.Sum(v => (v.Duration + EffectRecordingPlan.SettleTime).TotalSeconds) / 60;
+        parent.Controls.Add(Help(
+            $"6. Gravar efeitos (só pelo cabo, cerca de {Math.Ceiling(minutes):0} minutos): aplica cada efeito " +
+            $"({plan.Count} passagens) e lê o que os LEDs mostram várias vezes. O arquivo salvo em Documentos " +
+            "serve para a prévia imitar o teclado de verdade. Durante a gravação, aperte algumas letras de " +
+            "vez em quando (não Espaço nem Enter) para os efeitos que reagem a teclas. No fim, o efeito da " +
+            "janela principal é reaplicado."));
+        _recordEffect.Items.Add("Todos os efeitos");
+        _recordEffect.Items.AddRange([.. EffectCatalog.All.Where(e => e.Mode != 0)]);
+        _recordEffect.SelectedIndex = 0;
+        _recordEffect.SelectedIndexChanged += (_, _) =>
+            _recordButton.Text = _recordEffect.SelectedIndex == 0 ? "Gravar todos os efeitos" : "Gravar este efeito";
+        parent.Controls.Add(Help(
+            "Um efeito só grava 15 s por passagem: use para os que reagem a tecla (Acender e Apagar ao " +
+            "tocar, Explodir, Lançamento, Ondulações) e digite letras durante toda a gravação."));
+        parent.Controls.Add(Row(_recordEffect, _recordButton));
+        parent.Controls.Add(_recordNow);
+    }
+
+    private string? SelectedRecordEffect => (_recordEffect.SelectedItem as Effect)?.Key;
 
     private static Label Help(string text) => new()
     {
@@ -501,8 +536,156 @@ public sealed class LabForm : Form
         }
     }
 
+    // --- 6. Gravação dos efeitos ---------------------------------------------
+
+    private async Task ToggleRecordingAsync()
+    {
+        if (_recordCts is not null)
+        {
+            _recordCts.Cancel();
+            return;
+        }
+
+        var cable = HidDeviceFinder.ListCollections().FirstOrDefault(c => c.Kind == ChannelKind.Feature);
+        if (cable is null)
+        {
+            Log("Gravação: conecte o teclado pelo cabo. O dongle não lê a cor dos LEDs.");
+            return;
+        }
+
+        _recordCts = new CancellationTokenSource();
+        var token = _recordCts.Token;
+        _recordButton.Text = "Parar gravação";
+        var keys = _rawKeyboard.Listen();
+        if (keys is not null)
+        {
+            _rawKeyboard.KeyReceived += RecordKey;
+        }
+        var startedAt = DateTimeOffset.Now;
+        var recorded = new List<RecordedVariant>();
+        var plan = EffectRecordingPlan.Build(SelectedRecordEffect);
+        Log($"Gravação: {plan.Count} passagens pelo cabo.");
+        _recordEffect.Enabled = false;
+
+        try
+        {
+            for (var i = 0; i < plan.Count; i++)
+            {
+                var variant = plan[i];
+                _recordNow.Text = $"{i + 1}/{plan.Count}: {variant.Describe()}";
+                var result = await RecordVariantAsync(cable.Path, variant, token);
+                recorded.Add(result);
+                Log($"  {variant.Describe()}: {result.Summary()}");
+            }
+            Log("Gravação concluída.");
+        }
+        catch (OperationCanceledException)
+        {
+            Log("Gravação interrompida; o que já foi gravado será salvo.");
+        }
+        catch (Exception ex) when (ex is KeyboardException or Win32Exception or IOException)
+        {
+            Log("Gravação interrompida por erro: " + ex.Message);
+        }
+        finally
+        {
+            _rawKeyboard.KeyReceived -= RecordKey;
+            keys?.Dispose();
+            _recording = null;
+            _recordCts.Dispose();
+            _recordCts = null;
+            _recordButton.Text = _recordEffect.SelectedIndex == 0 ? "Gravar todos os efeitos" : "Gravar este efeito";
+            _recordEffect.Enabled = true;
+            _recordNow.Text = "";
+        }
+
+        if (recorded.Count > 0)
+        {
+            SaveRecording(recorded, startedAt);
+        }
+        await RestoreMainLightingAsync();
+    }
+
+    private async Task<RecordedVariant> RecordVariantAsync(string path, RecordingVariant variant, CancellationToken token)
+    {
+        var result = new RecordedVariant(variant);
+        using var link = new FeatureLink(new HidFeaturePort(path));
+        var client = new KeyboardClient(link);
+        await Task.Run(() => client.ApplyLighting(variant.Config), token);
+        await Task.Delay(EffectRecordingPlan.SettleTime, token);
+
+        _recordClock = System.Diagnostics.Stopwatch.StartNew();
+        _recording = result;
+        try
+        {
+            while (_recordClock.Elapsed < variant.Duration)
+            {
+                token.ThrowIfCancellationRequested();
+                var started = _recordClock.Elapsed;
+                var buffer = await Task.Run(link.ReadLedColors, token);
+                if (buffer is null)
+                {
+                    result.FailedReads++;
+                }
+                else
+                {
+                    result.Frames.Add(((int)started.TotalMilliseconds, buffer));
+                }
+                // Mesmo ritmo mínimo da prévia do oficial (fcn.004169b0)
+                var rest = LedReadProtocol.MinFramePeriod - (_recordClock.Elapsed - started);
+                if (rest > TimeSpan.Zero)
+                {
+                    await Task.Delay(rest, token);
+                }
+            }
+        }
+        finally
+        {
+            _recording = null;
+        }
+        return result;
+    }
+
+    // Raw Input chega no thread da janela principal, o mesmo desta
+    private void RecordKey(RawKey key) =>
+        _recording?.Keys.Add(((int)_recordClock.Elapsed.TotalMilliseconds, key.ScanCode, !key.Released));
+
+    private void SaveRecording(List<RecordedVariant> recorded, DateTimeOffset startedAt)
+    {
+        var folder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        var file = Path.Combine(folder, $"akira-gravacao-efeitos-{startedAt:yyyyMMdd-HHmmss}.json");
+        try
+        {
+            File.WriteAllText(file, EffectRecordingFile.Serialize(recorded, startedAt));
+            Log($"Gravação salva em {file}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log("Não foi possível salvar a gravação: " + ex.Message);
+        }
+    }
+
+    private async Task RestoreMainLightingAsync()
+    {
+        try
+        {
+            var lighting = _currentLighting();
+            await Task.Run(() =>
+            {
+                using var link = _openLink(null);
+                new KeyboardClient(link).ApplyLighting(lighting);
+            });
+            Log("Efeito da janela principal reaplicado.");
+        }
+        catch (Exception ex) when (ex is KeyboardException or Win32Exception or IOException)
+        {
+            Log("Não foi possível reaplicar o efeito: " + ex.Message);
+        }
+    }
+
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _recordCts?.Cancel();
         _sweepCts?.Cancel();
         StopMonitor();
         base.OnFormClosed(e);

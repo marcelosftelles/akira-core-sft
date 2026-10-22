@@ -114,4 +114,34 @@ public sealed partial class MainForm
             }
         }
     }
+
+    // Escuta das teclas do AKIRA para a prévia dos efeitos que reagem a tecla (Acender ao tocar,
+    // Explodir, Ondulações...): só com a página de iluminação à vista, como o espelho
+    private IDisposable? _previewKeys;
+
+    private bool PreviewKeysWanted =>
+        _webReady && Visible && WindowState != FormWindowState.Minimized && _view == "lighting";
+
+    /// <summary>Liga ou desliga a escuta conforme a página e a janela.</summary>
+    private void UpdatePreviewKeys()
+    {
+        if (PreviewKeysWanted && _previewKeys is null)
+        {
+            _previewKeys = _rawKeyboard.Listen();
+        }
+        else if (!PreviewKeysWanted && _previewKeys is not null)
+        {
+            _previewKeys.Dispose();
+            _previewKeys = null;
+        }
+    }
+
+    /// <summary>Repassa à página cada tecla do AKIRA (scan code do conjunto 1, 0xE0xx com prefixo E0).</summary>
+    private void OnPreviewKey(RawKey key)
+    {
+        if (_previewKeys is not null)
+        {
+            Post(new { type = "key", scan = key.ScanCode, down = !key.Released });
+        }
+    }
 }

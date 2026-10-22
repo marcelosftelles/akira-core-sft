@@ -32,12 +32,13 @@ public sealed partial class MainForm : Form
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly bool _startHidden;
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
-    private readonly NotifyIcon _trayIcon = new() { Text = "AKIRA CORE", Icon = SystemIcons.Application };
+    private readonly NotifyIcon _trayIcon = new() { Text = "AKIRA CORE", Icon = AppIcons.Tray() };
     // WM_DEVICECHANGE chega em rajadas: espera assentar antes de procurar o teclado
     private readonly System.Windows.Forms.Timer _deviceTimer = new() { Interval = 700 };
     // Um envio por vez: duas transações abertas juntas se misturariam no teclado
     private readonly SemaphoreSlim _keyboardLock = new(1, 1);
-    // Teclas do AKIRA (Raw Input): só o monitor do Laboratório escuta
+    // Teclas do AKIRA (Raw Input): alimentam a prévia dos efeitos que reagem a tecla e o
+    // Laboratório (monitor e gravação)
     private readonly RawKeyboardMonitor _rawKeyboard = new();
     // Bateria: o oficial pergunta ao dongle a cada 15 s (fcn.004357d0)
     private readonly System.Windows.Forms.Timer _batteryTimer = new()
@@ -46,6 +47,8 @@ public sealed partial class MainForm : Form
     };
     private int? _batteryLevel;
     private readonly BatteryAlert _batteryAlert = new();
+    // O nível cru pula alguns pontos entre leituras; a tela, a bandeja e o aviso usam o suavizado
+    private readonly BatteryLevelFilter _batteryFilter = new();
 
     // Teclas e configurações: cada ajuste reenvia tudo, então só o pedido mais recente importa
     private readonly LatestOnly _keysSender;
@@ -57,6 +60,7 @@ public sealed partial class MainForm : Form
     private bool _sending;
     private bool _dirty;
     private bool _exiting;
+    private bool _darkTheme = WindowChrome.IsDarkTheme();
     private LabForm? _labForm;
 
     public MainForm(bool startHidden)
@@ -70,16 +74,16 @@ public sealed partial class MainForm : Form
         _keysSender = new LatestOnly(SendKeysAsync);
         _deviceSender = new LatestOnly(SendDeviceAsync);
 
-        var dark = WindowChrome.IsDarkTheme();
         Text = "AKIRA CORE";
+        Icon = AppIcons.App();
         Font = new Font("Segoe UI", 9f);
         StartPosition = FormStartPosition.CenterScreen;
         var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 800);
         Size = new Size(Math.Min(1000, workArea.Width), Math.Min(740, workArea.Height));
         MinimumSize = new Size(820, 600);
-        BackColor = WindowChrome.Ground(dark);
+        BackColor = WindowChrome.Ground(_darkTheme);
         // Fundo da página antes dela pintar: evita um clarão branco no tema escuro
-        _web.DefaultBackgroundColor = WindowChrome.Ground(dark);
+        _web.DefaultBackgroundColor = WindowChrome.Ground(_darkTheme);
         Controls.Add(_web);
 
         BuildTray();
@@ -91,9 +95,24 @@ public sealed partial class MainForm : Form
             _ = RefreshBatteryAsync(); // dongle recém-conectado: o oficial lê na hora
         };
         _batteryTimer.Tick += (_, _) => _ = RefreshBatteryAsync();
-        Activated += (_, _) => PostDevice();
-        VisibleChanged += (_, _) => UpdateMirror();
-        Resize += (_, _) => UpdateMirror();
+        Activated += (_, _) =>
+        {
+            PostDevice();
+            SetActive(true);
+        };
+        Deactivate += (_, _) => SetActive(false);
+        VisibleChanged += (_, _) =>
+        {
+            UpdateMirror();
+            UpdatePreviewKeys();
+        };
+        Resize += (_, _) =>
+        {
+            UpdateMirror();
+            UpdatePreviewKeys();
+            UpdateFrame();
+        };
+        _rawKeyboard.KeyReceived += OnPreviewKey;
         SystemEvents.UserPreferenceChanged += OnThemeChanged;
     }
 
@@ -102,7 +121,8 @@ public sealed partial class MainForm : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        WindowChrome.Apply(Handle, WindowChrome.IsDarkTheme());
+        WindowChrome.Apply(Handle, _darkTheme);
+        UpdateFrame();
         _rawKeyboard.Attach(Handle);
         // Também com --hidden: a bandeja mostra a bateria mesmo sem a janela ter aberto
         _batteryTimer.Start();
@@ -140,6 +160,10 @@ public sealed partial class MainForm : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (HandleFrameMessage(ref m))
+        {
+            return;
+        }
         if (m.Msg == WmDeviceChange)
         {
             _deviceTimer.Stop();
@@ -160,10 +184,15 @@ public sealed partial class MainForm : Form
         }
         BeginInvoke(() =>
         {
-            var dark = WindowChrome.IsDarkTheme();
-            WindowChrome.Apply(Handle, dark);
-            BackColor = WindowChrome.Ground(dark);
-            _web.DefaultBackgroundColor = WindowChrome.Ground(dark);
+            _darkTheme = WindowChrome.IsDarkTheme();
+            WindowChrome.Apply(Handle, _darkTheme);
+            BackColor = WindowChrome.Ground(_darkTheme);
+            _web.DefaultBackgroundColor = WindowChrome.Ground(_darkTheme);
+            Invalidate();
+            // A bandeja segue o tema da barra de tarefas, que muda à parte do tema dos apps
+            var oldIcon = _trayIcon.Icon;
+            _trayIcon.Icon = AppIcons.Tray();
+            oldIcon?.Dispose();
         });
     }
 
@@ -201,6 +230,17 @@ public sealed partial class MainForm : Form
         settings.IsZoomControlEnabled = false;
         settings.IsGeneralAutofillEnabled = false;
         settings.IsPasswordAutosaveEnabled = false;
+        try
+        {
+            // app-region: drag na barra de título da página arrasta a janela, com duplo clique
+            // para maximizar e o menu da janela no botão direito
+            settings.IsNonClientRegionSupportEnabled = true;
+        }
+        catch (Exception ex) when (ex is NotImplementedException or System.Runtime.InteropServices.COMException
+                                       or InvalidCastException)
+        {
+            UseNativeFrame(); // WebView2 Runtime antigo: fica a barra do Windows
+        }
 
         core.AddWebResourceRequestedFilter(EmbeddedUi.Origin + "/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += (_, e) =>
@@ -225,6 +265,7 @@ public sealed partial class MainForm : Form
 
     private void ShowWebUnavailable(string reason)
     {
+        UseNativeFrame();
         Controls.Remove(_web);
         var panel = new FlowLayoutPanel
         {
@@ -256,11 +297,17 @@ public sealed partial class MainForm : Form
                 case "ready":
                     _webReady = true;
                     PostState();
+                    PostWindowState();
                     UpdateMirror();
+                    UpdatePreviewKeys();
+                    break;
+                case "window":
+                    HandleWindowCommand(message.GetProperty("action").GetString());
                     break;
                 case "view":
                     _view = message.GetProperty("name").GetString() ?? "";
                     UpdateMirror();
+                    UpdatePreviewKeys();
                     break;
                 case "apply":
                     if (AcceptLighting(message))
@@ -587,9 +634,11 @@ public sealed partial class MainForm : Form
         }
         var collections = HidDeviceFinder.ListCollections();
         var dongle = collections.FirstOrDefault(c => c.Kind == ChannelKind.Dongle);
+        var cable = collections.Any(c => c.Kind == ChannelKind.Feature);
         if (dongle is null)
         {
             _batteryLevel = null;
+            _batteryFilter.Reset();
         }
         // O espelho da prévia (cabo) segura o canal quase o tempo todo; o oficial lê a bateria
         // entre um quadro e outro, então aqui ela espera a vez em vez de desistir na hora
@@ -602,7 +651,8 @@ public sealed partial class MainForm : Form
                     using var link = new DongleLink(new HidReportPort(dongle.Path));
                     return new KeyboardClient(link).ReadBatteryLevel();
                 });
-                _batteryLevel = level ?? _batteryLevel;
+                Debug.WriteLine($"Bateria lida: {level?.ToString() ?? "sem nível"}");
+                _batteryLevel = _batteryFilter.Update(level, cable, DateTimeOffset.Now) ?? _batteryLevel;
             }
             catch (Exception ex) when (ex is KeyboardException or Win32Exception)
             {
@@ -616,7 +666,6 @@ public sealed partial class MainForm : Form
         UpdateTrayText();
         PostDevice();
 
-        var cable = collections.Any(c => c.Kind == ChannelKind.Feature);
         if (_batteryAlert.Update(dongle is null ? null : _batteryLevel, cable) && _settings.BatteryAlert)
         {
             _trayIcon.ShowBalloonTip(10000, "Bateria fraca no AKIRA",
